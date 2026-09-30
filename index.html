@@ -246,14 +246,14 @@
           <select id="s-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
         </div>
         <div class="flex flex-wrap gap-4 text-xs muted mt-4">
-          <span><i style="color:var(--accent)">●</i> Scheduled</span><span><i>●</i> Day off</span>
+          <span><i class="schedule-dot scheduled">●</i> Scheduled</span><span><i class="schedule-dot dayoff">●</i> Day off</span>
         </div>
         <div class="overflow-auto max-h-[32rem] mt-3">
           <table class="w-full text-sm min-w-[900px]" style="border-collapse:separate;border-spacing:6px">
             <thead id="s-head"></thead><tbody id="s-rows"></tbody>
           </table>
         </div>
-        <p class="muted text-xs mt-2">Click a day to set it as Scheduled or Day off. Only active employees appear here, and only from their date hired. Employees without an entry follow their default shift and one weekly day off.</p>
+        <p class="muted text-xs mt-2">Click a day to set it as Scheduled or Day off. Past days are locked. Changes to today update Attendance right away. Only active employees appear here, and only from their date hired. Employees without an entry follow their default shift and one weekly day off.</p>
       </div>
     </main>
     <!-- ATTENDANCE PAGE -->
@@ -319,7 +319,7 @@
         <select id="r-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
         <select id="r-emp" class="input w-full sm:!w-52" aria-label="Employee"></select>
         <select id="r-pos" class="input w-full sm:!w-44" aria-label="Position"></select>
-        <select id="r-st" class="input w-full sm:!w-44" aria-label="Payroll status"><option value="">All Statuses</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option></select>
+        <select id="r-st" class="input w-full sm:!w-44" aria-label="Payroll status"><option value="">All Statuses</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
         <input id="r-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search reports"></div></div>
       <p id="r-label" class="muted text-sm mt-4"></p>
       <div id="r-stats" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-2"></div>
@@ -341,17 +341,18 @@
         <div class="card p-4 min-w-0">
           <div class="flex flex-wrap items-center gap-2">
             <select id="ps-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
+            <button type="button" id="ps-all-dl" class="btn text-sm">Download all payslips</button>
             <input id="ps-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search payslips">
           </div>
           <div class="overflow-auto mt-3"><table class="w-full text-sm min-w-[560px]">
             <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
             <tbody id="ps-rows"></tbody></table></div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="ps-count" class="muted text-sm"></p><div id="ps-pager" class="flex gap-2"></div></div>
-          <p class="muted text-xs mt-4">A payslip is ready to preview once payroll is approved (For release) and can be printed or saved as PDF once it is processed (Released).</p>
+          <p class="muted text-xs mt-4">A payslip can be previewed once payroll is approved. Processing payroll and releasing the payslip are separate steps: after payroll is Processed, use Release payslip in Payroll. Download is available once the payslip is Released.</p>
         </div>
         <div id="ps-panel" class="hidden min-w-0">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2"><button type="button" id="ps-close" class="ghost text-sm">✕ Close</button>
-            <div class="flex gap-2"><button type="button" id="ps-print" class="btn text-sm">Print Payslip</button><button type="button" id="ps-dl" class="ghost text-sm">Download PDF</button></div></div>
+            <div class="flex gap-2"><button type="button" id="ps-dl" class="btn text-sm">Download Payslip</button></div></div>
           <div id="ps-doc"></div>
         </div>
       </div>
@@ -361,7 +362,7 @@
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Payroll</span></nav>
       <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
         <div><h1 class="text-2xl font-semibold">Payroll</h1><p class="muted text-sm mt-1">Generate and manage employee payroll from finalized attendance.</p></div>
-        <div class="flex flex-wrap gap-2"><button id="p-adv" class="ghost">Advance selected</button><button id="p-gen" class="btn">Process Payroll</button></div>
+        <div class="flex flex-wrap gap-2"><button id="p-adv" class="ghost">Advance selected</button><button id="p-gen" class="btn">Generate payroll</button></div>
       </div>
       <div class="card p-4 mt-5">
         <div id="p-tabs" class="flex gap-2"><button type="button" data-tab="current">Current payroll</button><button type="button" data-tab="history">History</button></div>
@@ -369,7 +370,7 @@
           <p id="p-label" class="font-medium mt-4"></p><p id="p-info" class="muted text-xs mt-1"></p>
           <div class="flex flex-wrap items-center gap-2 mt-4">
             <select id="p-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
-            <select id="p-st" class="input w-full sm:!w-44" aria-label="Filter by status"><option value="">All Status</option><option value="none">Not generated</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option></select>
+            <select id="p-st" class="input w-full sm:!w-44" aria-label="Filter by status"><option value="">All Status</option><option value="none">Not generated</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
             <input id="p-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search payroll">
           </div>
           <div class="overflow-auto mt-3">
@@ -380,10 +381,10 @@
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="p-count" class="muted text-sm"></p><div id="p-pager" class="flex gap-2"></div></div>
           <div id="p-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4"></div>
-          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. A period becomes payable once it has ended. Absent days are unpaid, regular pay is the scheduled hours on days worked, overtime is paid at 1.25×, and Tardiness, Undertime and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed, and processed payroll is locked.</p>
+          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. A period becomes payable once it has ended. Absent days are unpaid, regular pay is the scheduled hours on days worked, overtime is paid at 1.25×, and Tardiness, Undertime and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the employee is a separate step. Employees stay in the current period until the whole period closes and moves to History.</p>
         </div>
         <div id="p-his" class="hidden">
-          <p class="muted text-sm mt-4">Closed pay periods. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
+          <p class="muted text-sm mt-4">Closed pay periods, archived as a whole. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
           <div class="overflow-auto mt-2"><table class="w-full text-sm min-w-[760px]">
             <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Pay period</th><th class="font-normal pr-3">Employees</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
             <tbody id="h-rows"></tbody></table></div>

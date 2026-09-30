@@ -17,8 +17,10 @@ function defaultEmps() {
   const o = {};
   ROSTER.forEach(([name, pos], i) => {
     const d = new Date(2024, 0, 10 + i * 38), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
-    o['EMP-' + pad(i + 1)] = withShift({ name, pos, rate: 80, shift: i % 3 === 1 ? 1 : 0, active: i < 13, hired: `${d.getFullYear()}-${mm}-${dd}`,
-      contact: `09${['17', '18', '19', '16'][i % 4]} ${pad(120 + i * 53)} ${String(1000 + i * 731).slice(-4)}` });
+    o['EMP-' + pad(i + 1)] = withShift({
+      name, pos, rate: 80, shift: i % 3 === 1 ? 1 : 0, active: i < 13, hired: `${d.getFullYear()}-${mm}-${dd}`,
+      contact: `09${['17', '18', '19', '16'][i % 4]} ${pad(120 + i * 53)} ${String(1000 + i * 731).slice(-4)}`
+    });
   });
   return o;
 }
@@ -28,7 +30,7 @@ const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } },
 };
 const fmtTime = d => new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 const initials = n => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -52,11 +54,18 @@ const saveSch = () => store.set('sched', SCH);
 const dkey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function getSched(id, d) {
   const o = SCH[dkey(d)]?.[id]; if (o) return o.t === 'leave' ? { t: 'off' } : o; // the only statuses are Scheduled and Day off
+  return defSched(id, d);
+}
+function defSched(id, d) { // the employee's default pattern, used when a day has no edit
   const wd = (d.getDay() + 6) % 7; // Mon = 0
   if (wd === (+id.slice(4) - 1) % 7) return { t: 'off' }; // default: one weekly day off, staggered
   const t = TYPE_BY_SHIFT[EMP[id].shift] || 'morning', p = SHIFT_TYPES[t];
   return { t, in: p.in, out: p.out };
 }
+const schedChanged = (id, d) => { // true when an edit made this day differ from the default pattern
+  if (!SCH[dkey(d)]?.[id]) return false; const b = defSched(id, d), s = getSched(id, d);
+  return (b.in ?? null) !== (s.in ?? null) || (b.out ?? null) !== (s.out ?? null);
+};
 const startOf = id => getSched(id, new Date()).in ?? 1e9; // scheduled start today (minutes), or 1e9 when not working
 const fmtMin = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}:${String(mm).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
 const fmtShort = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}${mm ? ':' + String(mm).padStart(2, '0') : ''} ${h >= 12 ? 'PM' : 'AM'}`; };
@@ -95,7 +104,7 @@ function paintTheme() {
 $('#theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem('theme', next); } catch (e) {}
+  try { localStorage.setItem('theme', next); } catch (e) { }
   paintTheme();
 });
 paintTheme();
@@ -124,10 +133,10 @@ $('#reg-form').addEventListener('submit', e => {
   const g = id => $(id).value.trim(), err = $('#reg-err');
   const bad = !g('#rb') || !g('#rn') || !g('#ru') ? 'Enter your business name, full name and username.'
     : $('#rp').value.length < 6 ? 'Use a password with at least 6 characters.'
-    : $('#rp').value !== $('#rc').value ? 'Passwords don’t match.'
-    : !/^\d{6}$/.test($('#rpin').value) ? 'The PIN must be exactly 6 digits.'
-    : $('#rpin').value !== $('#rpc').value ? 'PINs don’t match.'
-    : !$('#rt').checked ? 'Accept the terms to continue.' : '';
+      : $('#rp').value !== $('#rc').value ? 'Passwords don’t match.'
+        : !/^\d{6}$/.test($('#rpin').value) ? 'The PIN must be exactly 6 digits.'
+          : $('#rpin').value !== $('#rpc').value ? 'PINs don’t match.'
+            : !$('#rt').checked ? 'Accept the terms to continue.' : '';
   if (bad) { err.textContent = bad; err.classList.remove('hidden'); return; }
   err.classList.add('hidden');
   sess = { username: g('#ru'), password: $('#rp').value, business: g('#rb'), name: g('#rn'), email: g('#re'), pin: $('#rpin').value };
@@ -461,18 +470,22 @@ $('#x-form').addEventListener('submit', e => {
   const name = $('#x-name').value.trim(), rate = parseFloat($('#x-rate').value);
   if (!name || !(rate > 0)) { toast('Enter the name and a rate per hour.', 'err'); return; }
   const ph = fmtPhone($('#x-contact').value); if (!ph) { toast('Enter a valid mobile number, for example 0917 123 4567.', 'err'); return; }
-  EMP[xId] = withShift({ ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: ph,
-    active: $('#x-status').value === 'active', photo: xPhoto });
+  EMP[xId] = withShift({
+    ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: ph,
+    active: $('#x-status').value === 'active', photo: xPhoto
+  });
   saveEmps(); closeEdit(); renderEmployees(); toast('Employee updated.');
 });
 
 /* ---------- ID cards ---------- */
 const bizName = () => (typeof sess !== 'undefined' && sess && sess.business) || 'InfusoPay Café';
-const cardFront = id => { const e = EMP[id]; return `<div class="idc"><div class="idc-h">${esc(bizName())}</div><div class="idc-b">
+const cardFront = id => {
+  const e = EMP[id]; return `<div class="idc"><div class="idc-h">${esc(bizName())}</div><div class="idc-b">
   <div class="idc-p">${e.photo ? `<img src="${e.photo}" alt="">` : esc(initials(e.name))}</div>
   <div class="idc-t"><div class="idc-n">${esc(e.name)}</div><div class="idc-s">${esc(e.pos)}</div><div class="idc-i">${id}</div></div>
   <div class="idc-q">${typeof qrcode === 'undefined' ? '' : qrSvg(id)}</div></div>
-  <div class="idc-f"><span>Employee ID card</span><span>Scan for attendance</span></div></div>`; };
+  <div class="idc-f"><span>Employee ID card</span><span>Scan for attendance</span></div></div>`;
+};
 const cardBack = id => `<div class="idc"><div class="idc-h">${esc(bizName())}</div><div class="idc-bk">
   <p>This card is the property of ${esc(bizName())}. It is non-transferable and must be shown when requested.</p>
   <p>Scan the QR code at the attendance station to record your time in and out.</p>
@@ -503,12 +516,12 @@ let wk = mondayOf(new Date()), sEdit = null;
 
 const YMD = { month: 'short', day: 'numeric', year: 'numeric' };
 function renderSchedule() {
-  const days = [...Array(7)].map((_, i) => addDays(wk, i)), a = days[0], b = days[6], todayK = dkey(new Date());
+  const days = [...Array(7)].map((_, i) => addDays(wk, i)), a = days[0], b = days[6], todayK = dkey(new Date()), t0 = new Date(new Date().setHours(0, 0, 0, 0));
   $('#s-range').textContent = a.getFullYear() !== b.getFullYear()
     ? `${a.toLocaleDateString('en-US', YMD)} – ${b.toLocaleDateString('en-US', YMD)}`
     : a.getMonth() === b.getMonth()
-    ? `${a.toLocaleDateString('en-US', { month: 'long' })} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`
-    : `${a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${b.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${b.getFullYear()}`;
+      ? `${a.toLocaleDateString('en-US', { month: 'long' })} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`
+      : `${a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${b.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${b.getFullYear()}`;
   const staff = Object.entries(EMP).filter(([, e]) => e.active && !e.draft);
   const q = $('#s-q').value.trim().toLowerCase(), pf = $('#s-pos').value;
   const rows = staff.filter(([id, e]) => (!q || `${id} ${e.name}`.toLowerCase().includes(q)) && (!pf || e.pos === pf));
@@ -519,10 +532,10 @@ function renderSchedule() {
   $('#s-rows').innerHTML = rows.length ? rows.map(([id, e]) => `<tr><td class="sticky left-0 z-10 pr-3 py-1 whitespace-nowrap" style="background:var(--surface)">
     <div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}
     <div class="leading-tight"><div class="font-medium">${esc(e.name)}</div><div class="muted text-xs">${esc(e.pos)}</div></div></div></td>` + days.map(d => {
-      const s = getSched(id, d);
-      if (d < new Date(e.hired + 'T00:00')) return '<td class="p-0 align-top min-w-[112px]"><div class="sc muted" style="background:transparent;border-left-color:transparent">Not yet hired</div></td>';
-      return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${s.in != null ? 'work' : 'off'}" data-id="${id}" data-d="${dkey(d)}"><b>${s.in != null ? 'Scheduled' : 'Day off'}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
-    }).join('') + '</tr>').join('') : '<tr><td colspan="8" class="py-8 text-center muted">No employees match your filters.</td></tr>';
+    const s = getSched(id, d), past = d < t0;
+    if (d < new Date(e.hired + 'T00:00')) return '<td class="p-0 align-top min-w-[112px]"><div class="sc muted" style="background:transparent;border-left-color:transparent">Not yet hired</div></td>';
+    return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${s.in != null ? 'work' : 'off'}${past ? ' sc-lock' : ''}" ${past ? 'disabled title="Past schedules can’t be edited"' : ''} data-id="${id}" data-d="${dkey(d)}"><b>${s.in != null ? 'Scheduled' : 'Day off'}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
+  }).join('') + '</tr>').join('') : '<tr><td colspan="8" class="py-8 text-center muted">No employees match your filters.</td></tr>';
 }
 $('#s-prev').addEventListener('click', () => { wk = addDays(wk, -7); renderSchedule(); });
 $('#s-next').addEventListener('click', () => { wk = addDays(wk, 7); renderSchedule(); });
@@ -533,6 +546,7 @@ $('#s-pos').innerHTML = '<option value="">All positions</option>' + POSITIONS.ma
 const sModal = $('#sch-modal');
 const paintWork = () => $('#s-work').classList.toggle('hidden', $('#s-status').value !== 'work');
 function openSch(id, key) {
+  if (key < dkey(new Date())) { toast('Past schedules can’t be edited.', 'err'); return; }
   const d = new Date(key + 'T00:00'), s = getSched(id, d), e = EMP[id];
   sEdit = { id, key };
   $('#s-info').innerHTML = [['Employee', esc(e.name)], ['Date', d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })]]
@@ -550,12 +564,14 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeSch(); });
 $('#s-form').addEventListener('submit', e => {
   e.preventDefault();
   const st = $('#s-status').value; let v;
+  if (sEdit.key < dkey(new Date())) { toast('Past schedules can’t be edited.', 'err'); return; }
+  if (st === 'off' && sEdit.key === dkey(new Date()) && logs().some(x => x.id === sEdit.id && dkey(new Date(x.ts)) === sEdit.key)) { toast(`${EMP[sEdit.id].name} already scanned in today, so today can’t be set as a day off.`, 'err'); return; }
   if (st === 'work') {
     if (!$('#s-in').value || !$('#s-out').value) { toast('Enter the time in and time out.', 'err'); return; }
     const i = toMin($('#s-in').value); let o = toMin($('#s-out').value); if (o <= i) o += 1440; // ends after midnight
     v = { t: i >= 840 ? 'night' : i >= 570 ? 'afternoon' : 'morning', in: i, out: o }; // internal shift type, derived from the start time
   } else v = { t: st };
-  (SCH[sEdit.key] = SCH[sEdit.key] || {})[sEdit.id] = v; saveSch(); closeSch(); renderSchedule(); toast('Schedule updated.');
+  (SCH[sEdit.key] = SCH[sEdit.key] || {})[sEdit.id] = v; saveSch(); closeSch(); renderSchedule(); toast(sEdit.key === dkey(new Date()) ? 'Schedule updated. Today’s attendance now follows it.' : 'Schedule updated.');
 });
 
 /* ---------- Attendance records ---------- */
@@ -616,7 +632,7 @@ function renderAttendance() {
     const w = r.s.in != null, b = ATT_BADGE[r.st], live = r.running || r.onBreak;
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${r.id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${r.e.photo ? `<img class="avatar" src="${r.e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(r.e.name)}</span>`}<div class="leading-tight"><div>${esc(r.e.name)}</div><div class="muted text-xs">${esc(r.e.pos)}</div></div></div></td>
-    <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}</td>
+    <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}${schedChanged(r.id, r.d) ? '<div class="text-xs" style="color:var(--warn)" title="This day’s schedule was edited. Status and hours follow the updated schedule.">Schedule updated</div>' : ''}</td>
     ${[0, 1, 2, 3].map(i => `<td class="pr-3 whitespace-nowrap">${r.t[i] != null ? fmtMin(r.t[i]) : '—'}</td>`).join('')}
     <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${r.t.length ? fmtHM(r.hrs) : '—'}</td>
     <td><span class="badge ${b[0]}">${b[1]}</span></td></tr>`;
@@ -677,9 +693,31 @@ function dedRange() {
   return [new Date(y, m, 1), t];
 }
 let dPage = 1;
-const dpager = (page, pages) => { const n = []; for (let p = Math.max(1, page - 2); p <= Math.min(pages, Math.max(page + 2, 5)); p++) n.push(p);
-  return `<button class="ghost !px-3" data-p="${page - 1}" ${page === 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>` + n.map(p => `<button class="${p === page ? 'btn' : 'ghost'} !px-3" data-p="${p}">${p}</button>`).join('') + `<button class="ghost !px-3" data-p="${page + 1}" ${page === pages ? 'disabled' : ''} aria-label="Next page">›</button>`; };
+const dpager = (page, pages) => {
+  const n = []; for (let p = Math.max(1, page - 2); p <= Math.min(pages, Math.max(page + 2, 5)); p++) n.push(p);
+  return `<button class="ghost !px-3" data-p="${page - 1}" ${page === 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>` + n.map(p => `<button class="${p === page ? 'btn' : 'ghost'} !px-3" data-p="${p}">${p}</button>`).join('') + `<button class="ghost !px-3" data-p="${page + 1}" ${page === pages ? 'disabled' : ''} aria-label="Next page">›</button>`;
+};
 
+/* Where a deduction lands in payroll (weekly periods, Mon–Sun) */
+const dedPeriod = date => mondayOf(new Date(date + 'T00:00'));
+const DED_STATE = {
+  next:   ['b-muted', 'Next payroll'], // week not finished yet
+  open:   ['b-warn',  'For payroll'],  // current period, payroll not generated yet
+  in:     ['b-ok',    'In payroll'],   // Draft → Approved: figures still live
+  locked: ['b-night', 'Processed']     // Processed/Released or already in History
+};
+function dedState(id, date) {
+  const s = dedPeriod(date), cs = curStart();
+  if (s > cs) return 'next';
+  if (s < cs) return 'locked';
+  const st = pStatus(s, id);
+  return st === 'none' ? 'open' : (st === 'processed' || st === 'released') ? 'locked' : 'in';
+}
+function reopenIfApproved(id, date) { // figures changed after sign-off, so the approver must look again
+  const k = pKey(dedPeriod(date), id);
+  if (PAY[k] !== 'approved') return false;
+  PAY[k] = 'review'; savePay(); return true;
+}
 function renderDeductions() {
   const custom = $('#d-per').value === 'custom', today = dkey(new Date());
   $('#d-from').classList.toggle('hidden', !custom); $('#d-to').classList.toggle('hidden', !custom); $('#d-from').max = $('#d-to').max = today;
@@ -699,12 +737,17 @@ function renderDeductions() {
   $('#d-label').textContent = fk === tk ? fm(from) : `${fm(from)} – ${fm(to)}`;
   const pages = Math.max(1, Math.ceil(all.length / PER_PAGE)); dPage = Math.min(dPage, pages);
   const at = (dPage - 1) * PER_PAGE, part = all.slice(at, at + PER_PAGE);
-  $('#d-rows').innerHTML = part.length ? part.map(x => { const e = EMP[x.id];
+  $('#d-rows').innerHTML = part.length ? part.map(x => {
+    const e = EMP[x.id], stt = dedState(x.id, x.date), bd = DED_STATE[stt];
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${fmtDate(x.date)}</td><td class="pr-3 whitespace-nowrap">${x.id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
     <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3"><span class="badge ${DED_BADGE[x.type] || 'b-muted'}">${esc(dedName(x.type))}</span></td>
-    <td class="pr-3 whitespace-nowrap">${num(x.amount)}</td><td class="pr-3">${esc(x.remarks || '—')}</td><td class="pr-3"><span class="badge b-ok">Applied</span></td>
-    <td class="whitespace-nowrap">${x.auto ? '<span class="muted text-xs" title="Generated from Attendance and Schedules">Automatic</span>' : `<button class="ghost !py-1 !px-2 text-xs" data-dedit="${x.k}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-ddel="${x.k}">Delete</button>`}</td></tr>`; }).join('')
+    <td class="pr-3 whitespace-nowrap">${num(x.amount)}</td><td class="pr-3">${esc(x.remarks || '—')}</td>
+    <td class="pr-3"><span class="badge ${bd[0]}" title="Pay period: ${fmR(dedPeriod(x.date))}">${bd[1]}</span></td>
+    <td class="whitespace-nowrap">${x.auto ? '<span class="muted text-xs" title="Generated from Attendance and Schedules">Automatic</span>'
+      : stt === 'locked' ? '<span class="muted text-xs" title="This pay period is already processed">Locked</span>'
+      : `<button class="ghost !py-1 !px-2 text-xs" data-dedit="${x.k}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-ddel="${x.k}">Delete</button>`}</td></tr>`;
+  }).join('')
     : '<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No deductions match your filters.</td></tr>';
   $('#d-count').textContent = all.length ? `Showing ${at + 1} to ${at + part.length} of ${all.length} records` : 'Showing 0 records';
   $('#d-pager').innerHTML = dpager(dPage, pages);
@@ -756,25 +799,43 @@ $('#dm-form').addEventListener('submit', e => {
   const id = $('#dm-emp').value, amount = Math.round(parseFloat($('#dm-amt').value) * 100) / 100, date = $('#dm-date').value;
   if (!id || !date || !(amount > 0)) { toast('Select an employee, date and an amount above zero.', 'err'); return; }
   if (date > dkey(new Date())) { toast('The date can’t be in the future.', 'err'); return; }
+  const old = dEdit ? DED.find(x => x.k === dEdit) : null;
+  if (old && dedState(old.id, old.date) === 'locked') { toast('This deduction belongs to a processed payroll and can’t be edited.', 'err'); return; }
+  if (dedState(id, date) === 'locked') { toast(`Payroll for ${fmR(dedPeriod(date))} is already processed. Use a date in the current week so it’s deducted in the next payroll.`, 'err'); return; }
   let type = $('#dm-type').value;
   if (type === 'other') { const k = commitOther(); if (k === false) return; type = k || 'other'; }
   const rec = { k: dEdit || 'm-' + Date.now() + Math.random().toString(36).slice(2, 5), id, type, amount, date, remarks: $('#dm-rem').value.trim() };
   const i = DED.findIndex(x => x.k === dEdit); if (i >= 0) DED[i] = rec; else DED.push(rec);
-  saveDed(); closeDed(); renderDeductions(); toast(dEdit ? 'Deduction updated.' : 'Deduction added.');
+  const back = [old && reopenIfApproved(old.id, old.date), reopenIfApproved(id, date)].some(Boolean); // array, so both run
+  saveDed(); closeDed(); renderDeductions();
+  const stt = dedState(id, date), nm = EMP[id].name;
+  toast((stt === 'next' ? `Saved. It will be deducted in the payroll for ${fmR(dedPeriod(date))}.`
+    : stt === 'open' ? `Saved. It will be included when payroll is generated for ${nm}.`
+    : `Saved. ${nm}’s payroll now shows the new deduction.`) + (back ? ' The approved payroll was sent back for review.' : ''));
 });
 $('#d-rows').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.dedit) openDed(b.dataset.dedit);
-  if (b.dataset.ddel && confirm('Delete this deduction? This can’t be undone.')) { const i = DED.findIndex(x => x.k === b.dataset.ddel); if (i >= 0) DED.splice(i, 1); saveDed(); renderDeductions(); toast('Deduction deleted.'); }
+  if (b.dataset.ddel) {
+    const r = DED.find(x => x.k === b.dataset.ddel); if (!r) return;
+    if (dedState(r.id, r.date) === 'locked') { toast('This pay period is already processed, so the deduction can’t be deleted.', 'err'); return; }
+    if (!confirm('Delete this deduction? This can’t be undone.')) return;
+    DED.splice(DED.indexOf(r), 1);
+    const back = reopenIfApproved(r.id, r.date);
+    saveDed(); renderDeductions();
+    toast(back ? 'Deduction deleted. The approved payroll was sent back for review.' : 'Deduction deleted.');
+  }
 });
 
 /* ---------- Payroll ----------
    Weekly periods (Mon–Sun). A period is payable once it has ended, so the OPEN payroll is the latest completed week.
-   It stays on "Current payroll" until the next week ends, then rolls into History. Processed records are frozen (SNAP). */
+   It stays on "Current payroll" until the next week ends, then rolls into History. Processed and Released records are frozen (SNAP).
+   Flow: Draft → For review → Approved → Processed → Released. Processing locks the figures; releasing the payslip is a separate, manual step. */
 const PAY = store.get('pay', {}), SNAP = store.get('paysnap', {}), OT_MULT = 1.25; // overtime paid at 125%
 const savePay = () => { store.set('pay', PAY); store.set('paysnap', SNAP); };
-const PAY_ST = { none: ['b-muted', 'Not generated'], draft: ['b-muted', 'Draft'], review: ['b-warn', 'For review'], approved: ['b-night', 'Approved'], processed: ['b-ok', 'Processed'] };
-const PAY_NEXT = { draft: ['review', 'Send for review'], review: ['approved', 'Approve'], approved: ['processed', 'Process & release payslip'] };
+const PAY_ST = { none: ['b-muted', 'Not generated'], draft: ['b-muted', 'Draft'], review: ['b-warn', 'For review'], approved: ['b-night', 'Approved'], processed: ['b-warn', 'Processed'], released: ['b-ok', 'Released'] };
+const PAY_NEXT = { draft: ['review', 'Send for review'], review: ['approved', 'Approve'], approved: ['processed', 'Process payroll'], processed: ['released', 'Release payslip'] };
+const slipOk = st => st === 'approved' || st === 'processed' || st === 'released'; // payslip can be previewed from Approved; printed only once Released
 let pTab = 'current', pPage = 1, hPage = 1, pSel = new Set(), pOpen = null, hSel = null;
 const curStart = () => addDays(mondayOf(new Date()), -7), weekEnd = s => addDays(s, 6);
 const pKey = (s, id) => dkey(s) + '|' + id, pStatus = (s, id) => PAY[pKey(s, id)] || 'none';
@@ -788,8 +849,10 @@ function payCalc(id, from, to, A) {
     const r = attRecord(id, d); if (r.s.in == null || r.st === 'upcoming') continue;
     c.days++;
     if (r.st === 'absent') c.absent++;
-    else { c.present++; c.mins += r.hrs; c.ot += r.ot; c.reg += r.s.out - r.s.in; // paid on scheduled hours; lateness and undertime are deducted separately
-      if (r.st === 'late') { c.late++; c.lates.push({ d: new Date(d), tin: r.tin, sin: r.s.in }); } }
+    else {
+      c.present++; c.mins += r.hrs; c.ot += r.ot; c.reg += r.s.out - r.s.in; // paid on scheduled hours; lateness and undertime are deducted separately
+      if (r.st === 'late') { c.late++; c.lates.push({ d: new Date(d), tin: r.tin, sin: r.s.in }); }
+    }
   }
   const fk = dkey(from), tk = dkey(to);
   c.ds = [...A.filter(x => x.id === id), ...DED.filter(x => x.id === id && x.date >= fk && x.date <= tk)];
@@ -799,7 +862,7 @@ function payCalc(id, from, to, A) {
   c.log = dayLog(id, from); // day-by-day record, frozen with the payroll snapshot
   return c;
 }
-function payGet(id, s, A) { // processed records come from the frozen snapshot, everything else is live
+function payGet(id, s, A) { // processed and released records come from the frozen snapshot, everything else is live
   const k = pKey(s, id);
   if (SNAP[k]) return { ...SNAP[k], lates: SNAP[k].lates.map(l => ({ ...l, d: new Date(l.d) })) };
   return payCalc(id, s, weekEnd(s), A || autoDeds(s, weekEnd(s)));
@@ -811,24 +874,25 @@ function payRows(s, hist) {
 }
 function payAdv(s, id, A) {
   const k = pKey(s, id), n = PAY_NEXT[PAY[k]]; if (!n) return false;
-  PAY[k] = n[0]; if (n[0] === 'processed') SNAP[k] = payCalc(id, s, weekEnd(s), A || autoDeds(s, weekEnd(s))); // lock the figures
+  PAY[k] = n[0]; if (n[0] === 'processed') SNAP[k] = payCalc(id, s, weekEnd(s), A || autoDeds(s, weekEnd(s))); // Processing locks the figures. Releasing only changes the status, not the numbers
   return true;
 }
-function resetPay() { // history: the last three closed periods are already processed, like a real payroll record
+function resetPay() { // history: the last three closed periods are already processed and released, like a real payroll record
   Object.keys(PAY).forEach(k => delete PAY[k]); Object.keys(SNAP).forEach(k => delete SNAP[k]);
   [-14, -21, -28].forEach(off => {
     const s = addDays(curStart(), off), A = autoDeds(s, weekEnd(s));
-    Object.keys(EMP).filter(id => EMP[id].active && !EMP[id].draft).forEach(id => { PAY[pKey(s, id)] = 'processed'; SNAP[pKey(s, id)] = payCalc(id, s, weekEnd(s), A); });
+    Object.keys(EMP).filter(id => EMP[id].active && !EMP[id].draft).forEach(id => { PAY[pKey(s, id)] = 'released'; SNAP[pKey(s, id)] = payCalc(id, s, weekEnd(s), A); });
   });
-  store.set('payv', 2); savePay();
+  store.set('payv', 3); savePay();
 }
-if (store.get('payv', 0) !== 2) resetPay();
+if (store.get('payv', 0) !== 3) resetPay(); // v3 adds the Released status
 
+const dedCell = c => `<td class="pr-3"${c.ds.length ? ` title="${esc(c.ds.map(x => dedName(x.type) + ' ' + num(x.amount)).join(', '))}"` : ''}>${num(c.ded)}${c.ds.length ? `<div class="muted text-xs">${c.ds.length} item${c.ds.length === 1 ? '' : 's'}</div>` : ''}</td>`;
 const payRowHtml = ({ id, e, c, st }, chk) => `<tr class="border-t hair">${chk ? `<td class="py-2.5 pr-3"><input type="checkbox" data-sel="${id}" ${pSel.has(id) ? 'checked' : ''} aria-label="Select ${esc(e.name)}"></td>` : ''}<td class="${chk ? '' : 'py-2.5 '}pr-3 whitespace-nowrap">${id}</td>
   <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
-  <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3">${num(c.rate)}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
+  <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3">${num(c.rate)}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td>${dedCell(c)}<td class="pr-3 font-medium">${num(c.net)}</td>
   <td class="pr-3"><span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></td>
-  <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-pv="${id}">View</button> <button class="ghost !py-1 !px-2 text-xs" data-ps="${id}" ${st === 'processed' ? '' : 'disabled title="Available once payroll is processed"'}>Payslip</button></td></tr>`;
+  <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-pv="${id}">View</button> <button class="ghost !py-1 !px-2 text-xs" data-ps="${id}" ${slipOk(st) ? '' : 'disabled title="Available once payroll is approved"'}>Payslip</button></td></tr>`;
 
 function renderPayroll() {
   $$('#p-tabs button').forEach(b => b.className = b.dataset.tab === pTab ? 'btn text-sm' : 'ghost text-sm');
@@ -858,7 +922,7 @@ function renderPayHis() {
   const cs = dkey(curStart()), ks = [...new Set(Object.keys(PAY).map(k => k.slice(0, 10)))].filter(k => k < cs).sort().reverse();
   if (hSel && !ks.includes(hSel)) hSel = null;
   $('#h-rows').innerHTML = ks.length ? ks.map(k => {
-    const s = new Date(k + 'T00:00'), rs = payRows(s, true), pend = rs.filter(r => r.st !== 'processed').length, t = f => num(rs.reduce((x, r) => x + r.c[f], 0));
+    const s = new Date(k + 'T00:00'), rs = payRows(s, true), pend = rs.filter(r => r.st !== 'released').length, t = f => num(rs.reduce((x, r) => x + r.c[f], 0));
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3">${rs.length}</td><td class="pr-3">${t('gross')}</td><td class="pr-3">${t('ded')}</td><td class="pr-3 font-medium">${t('net')}</td>
     <td class="pr-3"><span class="badge ${pend ? 'b-warn' : 'b-ok'}">${pend ? pend + ' pending' : 'Completed'}</span></td><td><button class="ghost !py-1 !px-2 text-xs" data-hp="${k}">${hSel === k ? 'Viewing' : 'View records'}</button></td></tr>`;
   }).join('') : '<tr class="border-t hair"><td colspan="7" class="py-8 text-center muted">No previous pay periods yet.</td></tr>';
@@ -902,7 +966,7 @@ function openPay(id, s, slip, ro) {
 const closePay = () => { pModal.classList.add('hidden'); pModal.classList.remove('flex'); };
 $('#pm-x').addEventListener('click', closePay); $('#pm-close').addEventListener('click', closePay);
 addEventListener('keydown', e => { if (e.key === 'Escape') closePay(); });
-$('#pm-act').addEventListener('click', () => { payAdv(pOpen.s, pOpen.id); savePay(); toast(`${EMP[pOpen.id].name}: ${PAY_ST[pStatus(pOpen.s, pOpen.id)][1]}.`); closePay(); renderPayroll(); });
+$('#pm-act').addEventListener('click', () => { payAdv(pOpen.s, pOpen.id); savePay(); const ns = pStatus(pOpen.s, pOpen.id); toast(ns === 'released' ? `${EMP[pOpen.id].name}: Payslip released.` : `${EMP[pOpen.id].name}: ${PAY_ST[ns][1]}.`); closePay(); renderPayroll(); });
 const payClick = (e, s) => {
   const b = e.target.closest('button'), c = e.target.closest('[data-sel]');
   if (c) { c.checked ? pSel.add(c.dataset.sel) : pSel.delete(c.dataset.sel); return; }
@@ -931,7 +995,7 @@ function renderReports() {
   const sum = (l, k) => l.reduce((t, r) => t + r.c[k], 0), pending = rows.filter(r => r.st === 'review').length;
   const dl = (cur, old, bad) => old > 0 ? `<span style="color:var(--${(cur >= old) !== !!bad ? 'ok' : 'err'})">${cur >= old ? '▲' : '▼'} ${Math.abs(Math.round((cur - old) / old * 100))}%</span> vs. previous period` : 'No previous period data';
   $('#r-stats').innerHTML = [['Total employees', rows.length, 'for selected period'], ['Total gross pay', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))], ['Total deductions', peso(sum(rows, 'ded')), dl(sum(rows, 'ded'), sum(pr, 'ded'), 1)],
-    ['Total net pay', peso(sum(rows, 'net')), dl(sum(rows, 'net'), sum(pr, 'net'))], ['Total payroll cost', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))]]
+  ['Total net pay', peso(sum(rows, 'net')), dl(sum(rows, 'net'), sum(pr, 'net'))], ['Total payroll cost', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))]]
     .map(([l, v, n]) => `<div class="card p-4"><div class="muted text-sm">${l}</div><div class="text-2xl font-semibold mt-1">${v}</div><div class="muted text-xs mt-1">${n}</div></div>`).join('');
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); rPage = Math.min(rPage, pages);
   const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
@@ -939,15 +1003,15 @@ function renderReports() {
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
     <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3">${hrs2(c.reg)}</td><td class="pr-3">${hrs2(c.ot)}</td><td class="pr-3">${num(c.basic)}</td><td class="pr-3">${num(c.otPay)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
     <td class="pr-3"><span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></td>
-    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button> <button class="ghost !py-1 !px-2 text-xs" data-rp="${id}" ${st === 'processed' ? '' : 'disabled title="Available once payroll is processed"'}>View payslip</button></td></tr>`).join('')
-    : `<tr class="border-t hair"><td colspan="13" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Process Payroll.'}</td></tr>`;
+    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button> <button class="ghost !py-1 !px-2 text-xs" data-rp="${id}" ${slipOk(st) ? '' : 'disabled title="Available once payroll is approved"'}>View payslip</button></td></tr>`).join('')
+    : `<tr class="border-t hair"><td colspan="13" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
   $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#r-pager').innerHTML = dpager(rPage, pages);
   $('#r-sum').innerHTML = [['Total employees', rows.length], ['Total gross pay', peso(sum(rows, 'gross'))], ['Total deductions', peso(sum(rows, 'ded'))], ['Total net pay', peso(sum(rows, 'net'))], ['Pending review', pending]]
     .map(([l, v]) => `<div><div class="muted text-xs">${l}</div><div class="font-semibold text-lg">${v}</div></div>`).join('');
 }
 ['#r-per', '#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).addEventListener('input', () => { rPage = 1; renderReports(); }));
-$('#r-reset').addEventListener('click', () => { $('#r-per').value = ''; ['#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).value = ''); rPage = 1; renderReports(); });
+$('#r-reset').addEventListener('click', () => { $('#r-per').value = '';['#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).value = ''); rPage = 1; renderReports(); });
 $('#r-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { rPage = +b.dataset.p; renderReports(); } });
 $('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, rView.s, false, true); else if (b.dataset.rp) psGoto(b.dataset.rp, rView.s); });
 $('#r-exp').addEventListener('click', e => { e.stopPropagation(); $('#r-menu').classList.toggle('hidden'); });
@@ -967,7 +1031,7 @@ $('#r-menu').addEventListener('click', e => {
 });
 
 /* ---------- Payslips: list first; the payslip itself only opens after View ---------- */
-const PS_ST = { none: ['b-muted', 'Not generated'], draft: ['b-muted', 'Not generated'], review: ['b-muted', 'Not generated'], approved: ['b-warn', 'For release'], processed: ['b-ok', 'Released'] };
+const PS_ST = { none: ['b-muted', 'Not generated'], draft: ['b-muted', 'Not generated'], review: ['b-muted', 'Not generated'], approved: ['b-night', 'Approved'], processed: ['b-warn', 'Ready for release'], released: ['b-ok', 'Released'] };
 let psPage = 1, psSel = null; // psSel = { id, k: period start key }
 const longD = d => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 function dayLog(id, s) {
@@ -982,10 +1046,12 @@ function dayLog(id, s) {
 function psHtml(id, s, st) {
   const e = EMP[id], c = payGet(id, s), log = c.log || dayLog(id, s), g = {};
   c.ds.forEach(x => g[x.type] = (g[x.type] || 0) + x.amount);
-  const att = log.map(l => { const d = new Date(l.d + 'T00:00'), lbl = { off: 'Day off', leave: 'On leave', absent: 'Absent' }[l.st] || '—';
-    return `<tr><td>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td><td>${d.toLocaleDateString('en-US', { weekday: 'short' })}</td><td>${l.tin != null ? fmtMin(l.tin) : `<span class="mu">${lbl}</span>`}</td><td>${l.tout != null ? fmtMin(l.tout) : '—'}</td><td class="r">${l.tin != null ? fmtHM(l.hrs) : '—'}</td></tr>`; }).join('');
+  const att = log.map(l => {
+    const d = new Date(l.d + 'T00:00'), lbl = { off: 'Day off', leave: 'On leave', absent: 'Absent' }[l.st] || '—';
+    return `<tr><td>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td><td>${d.toLocaleDateString('en-US', { weekday: 'short' })}</td><td>${l.tin != null ? fmtMin(l.tin) : `<span class="mu">${lbl}</span>`}</td><td>${l.tout != null ? fmtMin(l.tout) : '—'}</td><td class="r">${l.tin != null ? fmtHM(l.hrs) : '—'}</td></tr>`;
+  }).join('');
   const ded = Object.entries(g).map(([t, v]) => `<tr><td>${esc(dedName(t))}</td><td class="r">${num(v)}</td></tr>`).join('') || '<tr><td>No deductions</td><td class="r">0.00</td></tr>';
-  return `<div class="ps">${st === 'processed' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet.</div>'}
+  return `<div class="ps">${st === 'released' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet. Release it from Payroll once payroll is processed.</div>'}
   <div class="ps-head"><div><h2>EMPLOYEE PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">Bulacan, Philippines</div></div></div>
   <dl class="ps-info"><dt>Employee Name</dt><dd>: ${esc(e.name)}</dd><dt>Employee ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(addDays(weekEnd(s), 1))}</dd></dl>
   <h3>1. Attendance summary</h3><table><thead><tr><th>Date</th><th>Day</th><th>Time in</th><th>Time out</th><th class="r">Total hours</th></tr></thead><tbody>${att}<tr class="ps-tot"><td colspan="4" class="r">Total Hours Worked</td><td class="r">${fmtHM(c.mins)}</td></tr></tbody></table>
@@ -1005,31 +1071,43 @@ function renderPayslips() {
   const q = $('#ps-q').value.trim().toLowerCase(), rows = all.filter(r => !q || `${r.id} ${r.e.name}`.toLowerCase().includes(q));
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); psPage = Math.min(psPage, pages);
   const at = (psPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
-  $('#ps-rows').innerHTML = part.length ? part.map(({ id, e, st }) => { const can = st === 'approved' || st === 'processed';
+  $('#ps-rows').innerHTML = part.length ? part.map(({ id, e, st }) => {
+    const can = slipOk(st);
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
     <td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3"><span class="badge ${PS_ST[st][0]}">${PS_ST[st][1]}</span></td>
-    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-psv="${id}" ${can ? '' : 'disabled title="Available once payroll is approved"'}>${psSel && psSel.id === id && psSel.k === k ? 'Viewing' : 'View'}</button> <button class="ghost !py-1 !px-2 text-xs" data-psd="${id}" ${st === 'processed' ? '' : 'disabled title="Available once payroll is processed"'}>Download</button></td></tr>`; }).join('')
+    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-psv="${id}" ${can ? '' : 'disabled title="Available once payroll is approved"'}>${psSel && psSel.id === id && psSel.k === k ? 'Viewing' : 'View'}</button></td></tr>`;
+  }).join('')
     : '<tr class="border-t hair"><td colspan="5" class="py-8 text-center muted">No payslips match your filters.</td></tr>';
   $('#ps-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#ps-pager').innerHTML = dpager(psPage, pages);
-  const sel = psSel && psSel.k === k && all.find(r => r.id === psSel.id && (r.st === 'approved' || r.st === 'processed'));
+  const sel = psSel && psSel.k === k && all.find(r => r.id === psSel.id && slipOk(r.st));
   if (!sel) psSel = null;
   $('#ps-panel').classList.toggle('hidden', !sel); $('#ps-wrap').classList.toggle('open', !!sel);
-  if (sel) { $('#ps-doc').innerHTML = psHtml(sel.id, s, sel.st); $('#ps-print').disabled = $('#ps-dl').disabled = sel.st !== 'processed'; }
+  if (sel) { $('#ps-doc').innerHTML = psHtml(sel.id, s, sel.st); $('#ps-dl').disabled = sel.st !== 'released'; }
 }
-function printSlip(id, s) { $('#card-sheet').innerHTML = psHtml(id, s, 'processed'); window.print(); }
+function downloadSlip(id, s) {
+  const html = psHtml(id, s, 'released');
+  const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><title>Payslip</title><style>${document.querySelector('style')?.textContent || ''}</style></head><body>${html}</body></html>`], { type: 'text/html' });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = `payslip-${id}-${dkey(s)}.html`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function downloadAllPayslips() {
+  const k = $('#ps-per').value, s = new Date(k + 'T00:00'), rows = payRows(s, k !== dkey(curStart())).filter(r => r.st === 'released');
+  if (!rows.length) { toast('No released payslips are available for this pay period.', 'err'); return; }
+  rows.forEach((r, i) => setTimeout(() => downloadSlip(r.id, s), i * 120));
+  toast(`Downloading ${rows.length} released payslip${rows.length === 1 ? '' : 's'}.`);
+}
 $('#ps-per').addEventListener('input', () => { psSel = null; psPage = 1; renderPayslips(); });
 $('#ps-q').addEventListener('input', () => { psPage = 1; renderPayslips(); });
 $('#ps-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { psPage = +b.dataset.p; renderPayslips(); } });
 $('#ps-rows').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return; const k = $('#ps-per').value;
   if (b.dataset.psv) { psSel = { id: b.dataset.psv, k }; renderPayslips(); if (innerWidth < 1280) $('#ps-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  else if (b.dataset.psd) { printSlip(b.dataset.psd, new Date(k + 'T00:00')); toast('In the print dialog, choose “Save as PDF”.'); }
 });
 $('#ps-close').addEventListener('click', () => { psSel = null; renderPayslips(); });
-$('#ps-print').addEventListener('click', () => { if (psSel) printSlip(psSel.id, new Date(psSel.k + 'T00:00')); });
-$('#ps-dl').addEventListener('click', () => { if (psSel) { printSlip(psSel.id, new Date(psSel.k + 'T00:00')); toast('In the print dialog, choose “Save as PDF”.'); } });
+$('#ps-dl').addEventListener('click', () => { if (psSel) downloadSlip(psSel.id, new Date(psSel.k + 'T00:00')); });
+$('#ps-all-dl').addEventListener('click', downloadAllPayslips);
 
 /* ---------- Sidebar (hamburger) ---------- */
 const side = $('#sidebar'), overlay = $('#overlay'), isDesk = () => matchMedia('(min-width:1024px)').matches;
