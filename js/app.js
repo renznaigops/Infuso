@@ -2,10 +2,12 @@
 'use strict';
 
 /* ---------- Demo data & state ---------- */
+const POSITIONS = ['Kitchen Staff', 'Dine Staff'];
+const fmtPhone = s => { const d = String(s).replace(/\D/g, ''); return /^09\d{9}$/.test(d) ? `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}` : null; }; // PH mobile: 09XX XXX XXXX
 const ROSTER = [
-  ['Ana Reyes', 'Barista'], ['Ben Cruz', 'Cashier'], ['Carla Santos', 'Kitchen staff'], ['Daniel Garcia', 'Barista'], ['Elena Mendoza', 'Cashier'],
-  ['Francis Dela Cruz', 'Kitchen staff'], ['Grace Villanueva', 'Barista'], ['Hector Ramos', 'Server'], ['Isabel Navarro', 'Server'], ['Jonas Bautista', 'Barista'],
-  ['Katrina Lopez', 'Cashier'], ['Luis Aquino', 'Dishwasher'], ['Maya Torres', 'Server'], ['Noel Pascual', 'Kitchen staff'], ['Olivia Castillo', 'Barista'],
+  ['Ana Reyes', 'Dine Staff'], ['Ben Cruz', 'Dine Staff'], ['Carla Santos', 'Kitchen Staff'], ['Daniel Garcia', 'Dine Staff'], ['Elena Mendoza', 'Dine Staff'],
+  ['Francis Dela Cruz', 'Kitchen Staff'], ['Grace Villanueva', 'Dine Staff'], ['Hector Ramos', 'Dine Staff'], ['Isabel Navarro', 'Dine Staff'], ['Jonas Bautista', 'Dine Staff'],
+  ['Katrina Lopez', 'Dine Staff'], ['Luis Aquino', 'Kitchen Staff'], ['Maya Torres', 'Dine Staff'], ['Noel Pascual', 'Kitchen Staff'], ['Olivia Castillo', 'Dine Staff'],
 ];
 const SHIFTS = [[480, '8:00 AM – 5:00 PM'], [600, '10:00 AM – 7:00 PM'], [900, '3:00 PM – 12:00 AM']]; // [start minute, label]
 const EMP = {}; // id -> { name, pos, contact, hired, shift, active, start, sch }
@@ -15,7 +17,7 @@ function defaultEmps() {
   const o = {};
   ROSTER.forEach(([name, pos], i) => {
     const d = new Date(2024, 0, 10 + i * 38), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
-    o['EMP-' + pad(i + 1)] = withShift({ name, pos, shift: i % 3 === 1 ? 1 : 0, active: i < 13, hired: `${d.getFullYear()}-${mm}-${dd}`,
+    o['EMP-' + pad(i + 1)] = withShift({ name, pos, rate: 80, shift: i % 3 === 1 ? 1 : 0, active: i < 13, hired: `${d.getFullYear()}-${mm}-${dd}`,
       contact: `09${['17', '18', '19', '16'][i % 4]} ${pad(120 + i * 53)} ${String(1000 + i * 731).slice(-4)}` });
   });
   return o;
@@ -37,6 +39,8 @@ let sess = null, pending = null, stage = 2, stream = null, camToken = 0, raf = n
 /* ---------- Demo data ---------- */
 Object.assign(EMP, store.get('emps', null) || defaultEmps());
 const saveEmps = () => store.set('emps', EMP);
+Object.values(EMP).forEach(e => { if (!POSITIONS.includes(e.pos)) e.pos = /kitchen|dishwasher/i.test(e.pos) ? 'Kitchen Staff' : 'Dine Staff'; if (!(e.rate > 0)) e.rate = 80; delete e.face; }); // keep older saved data in line with the new rules
+saveEmps();
 const activeIds = () => Object.keys(EMP).filter(id => EMP[id].active);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /* ---------- Schedules: data (per-day overrides; everything else follows the default shift) ---------- */
@@ -47,7 +51,7 @@ const SCH = store.get('sched', {}); // { 'YYYY-MM-DD': { 'EMP-001': { t, in, out
 const saveSch = () => store.set('sched', SCH);
 const dkey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function getSched(id, d) {
-  const o = SCH[dkey(d)]?.[id]; if (o) return o;
+  const o = SCH[dkey(d)]?.[id]; if (o) return o.t === 'leave' ? { t: 'off' } : o; // the only statuses are Scheduled and Day off
   const wd = (d.getDay() + 6) % 7; // Mon = 0
   if (wd === (+id.slice(4) - 1) % 7) return { t: 'off' }; // default: one weekly day off, staggered
   const t = TYPE_BY_SHIFT[EMP[id].shift] || 'morning', p = SHIFT_TYPES[t];
@@ -163,7 +167,7 @@ function stopCam() {
   camToken++; cancelAnimationFrame(raf);
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   $$('video').forEach(v => { v.srcObject = null; v.classList.add('hidden'); });
-  $('#qframe').classList.add('hidden'); $('#fframe').classList.add('hidden'); $('#rframe').classList.add('hidden');
+  $('#qframe').classList.add('hidden');
 }
 async function cam(video, facing, msg, frame) {
   const my = ++camToken;
@@ -213,6 +217,8 @@ function handleCode(code) {
   if (!EMP[code].active) { toast(EMP[code].name + ' is inactive.', 'err'); return; }
   const sc = getSched(code, new Date()); // no shift today (day off / leave): block time in, but still allow time out for someone already clocked in
   if (sc.in == null && nextType(code) === 'in') { toast(`${EMP[code].name} isn’t scheduled today (${TYPE_LABEL[sc.t]}). Ask your manager to update the schedule.`, 'err'); return; }
+  const today = new Date().toDateString(); // max 4 scans a day: time in, break out, break in, time out
+  if (logs().filter(x => x.id === code && new Date(x.ts).toDateString() === today).length >= 4) { toast(EMP[code].name + ' has already completed all 4 scans today.', 'err'); return; }
   pending = code; go('verify');
 }
 $('#manual').addEventListener('submit', e => { e.preventDefault(); handleCode($('#mid').value.trim().toUpperCase()); $('#mid').value = ''; });
@@ -221,28 +227,15 @@ $('#manual').addEventListener('submit', e => { e.preventDefault(); handleCode($(
 const logs = () => store.get('logs', []);
 const nextType = id => { const l = logs().filter(x => x.id === id).pop(); return l && l.type === 'in' ? 'out' : 'in'; };
 
-function setStage(n) {
-  stage = n;
-  const label = nextType(pending) === 'in' ? 'time in' : 'time out';
-  $('#s3').classList.toggle('on', n === 3);
-  $('#s2').textContent = n === 3 ? '✓' : '2';
-  $('#vt').textContent = n === 3 ? 'Confirm attendance' : 'Verify your identity';
-  $('#vs').textContent = n === 3 ? `Identity verified. Confirm to record your ${label}.` : 'QR code scanned. Look at the camera.';
-  $('#vbtn').disabled = false;
-  $('#vbtn').textContent = n === 3 ? `Confirm ${label}` : 'Verify identity';
-}
-async function startVerify() {
-  const e = EMP[pending];
-  $('#av').textContent = initials(e.name); $('#en').textContent = e.name; $('#ei').textContent = pending;
+function startVerify() { // QR scan -> confirm (no face step)
+  const e = EMP[pending], label = nextType(pending) === 'in' ? 'time in' : 'time out';
+  $('#av').innerHTML = e.photo ? `<img src="${e.photo}" alt="" class="w-full h-full object-cover">` : esc(initials(e.name)); // photo helps the admin check who is at the station
+  $('#en').textContent = e.name; $('#ei').textContent = pending;
   $('#ep').textContent = e.pos; $('#es').textContent = schedText(pending);
-  setStage(2);
-  await cam($('#fv'), 'user', $('#fmsg'), $('#fframe'));
+  $('#vt').textContent = 'Confirm attendance'; $('#vs').textContent = `QR code scanned. Confirm to record your ${label}.`;
+  $('#vbtn').textContent = `Confirm ${label}`;
 }
 $('#vbtn').addEventListener('click', () => {
-  if (stage === 2) { // face verification is simulated in this prototype
-    $('#vbtn').disabled = true; $('#vbtn').textContent = 'Verifying…';
-    setTimeout(() => setStage(3), 1200); return;
-  }
   const type = nextType(pending), e = EMP[pending], now = Date.now();
   const l = logs(); l.push({ id: pending, name: e.name, type, ts: now }); store.set('logs', l);
   toast(`${e.name}: Time ${type} at ${fmtTime(now)}`);
@@ -294,7 +287,7 @@ $('#reset').addEventListener('click', () => {
   Object.keys(SCH).forEach(k => delete SCH[k]); saveSch();
   Object.keys(EMP).forEach(k => delete EMP[k]); Object.assign(EMP, defaultEmps()); saveEmps();
   resetPay(); pSel.clear(); hSel = null;
-  store.set('logs', seedLogs()); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset.');
+  store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset.');
 });
 
 /* ---------- Demo QR codes ---------- */
@@ -316,29 +309,26 @@ $('#f-shift').innerHTML = SHIFTS.map((s, i) => `<option value="${i}">${s[1]}</op
 
 const eSel = new Set(), cardOk = id => !!EMP[id] && EMP[id].active && !EMP[id].draft; // ID cards: active employees with completed setup
 function renderEmployees() {
-  const all = Object.entries(EMP), act = all.filter(([, e]) => e.active).length;
-  $('#emp-stats').innerHTML = [['Total employees', all.length], ['Active employees', act], ['Inactive employees', all.length - act]]
+  const all = Object.entries(EMP), act = all.filter(([, e]) => e.active).length, dr = all.filter(([, e]) => e.draft).length;
+  $('#emp-stats').innerHTML = [['Total employees', all.length], ['Active employees', act], ['Inactive employees', all.length - act - dr], ['Draft employees', dr]]
     .map(([l, n]) => `<div class="card p-4"><div class="text-2xl font-semibold">${n}</div><div class="muted text-sm mt-1">${l}</div></div>`).join('');
-  const cur = $('#e-pos').value, poss = [...new Set(all.map(([, e]) => e.pos))].sort();
-  $('#e-pos').innerHTML = '<option value="">All positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-  $('#e-pos').value = poss.includes(cur) ? cur : '';
   const q = $('#e-q').value.trim().toLowerCase(), pf = $('#e-pos').value, sf = $('#e-st').value;
-  const rows = all.filter(([id, e]) => (!q || `${id} ${e.name} ${e.pos}`.toLowerCase().includes(q)) && (!pf || e.pos === pf) && (!sf || (sf === 'active') === e.active));
+  const rows = all.filter(([id, e]) => (!q || `${id} ${e.name} ${e.pos}`.toLowerCase().includes(q)) && (!pf || e.pos === pf) && (!sf || (e.draft ? 'draft' : e.active ? 'active' : 'inactive') === sf));
   $('#emp-rows').innerHTML = rows.length ? rows.map(([id, e], i) => `<tr class="border-t hair">
     <td class="py-2.5 pr-3"><input type="checkbox" data-csel="${id}" ${eSel.has(id) ? 'checked' : ''} aria-label="Select ${esc(e.name)}"></td><td class="py-2.5 muted">${i + 1}</td>
     <td class="whitespace-nowrap">${e.photo ? `<img class="avatar mr-2 align-middle inline-block" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs mr-2 align-middle" style="background:var(--bg)">${initials(e.name)}</span>`}${id}</td>
-    <td>${esc(e.name)}</td><td>${esc(e.pos)}</td><td class="whitespace-nowrap">${esc(e.contact || '—')}</td><td class="whitespace-nowrap">${fmtDate(e.hired)}</td>
+    <td>${esc(e.name)}</td><td>${esc(e.pos)}</td><td class="whitespace-nowrap">${e.rate > 0 ? num(e.rate) : '—'}</td><td class="whitespace-nowrap">${esc(e.contact || '—')}</td><td class="whitespace-nowrap">${fmtDate(e.hired)}</td>
     <td><span class="badge ${e.draft ? 'b-warn' : e.active ? 'b-ok' : 'b-err'}">${e.draft ? 'Draft' : e.active ? 'Active' : 'Inactive'}</span></td>
     <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-card="${id}" ${cardOk(id) ? '' : 'disabled title="Activate the employee to issue an ID card"'}>ID card</button> <button class="ghost !py-1 !px-2 text-xs" data-edit="${id}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-del="${id}">Delete</button></td></tr>`).join('')
-    : '<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No employees match your filters.</td></tr>';
+    : '<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">No employees match your filters.</td></tr>';
   $('#emp-count').textContent = `Showing ${rows.length} of ${all.length} employees`;
   $('#e-all').checked = rows.length > 0 && rows.every(([id]) => eSel.has(id));
 }
+$('#e-pos').innerHTML = '<option value="">All positions</option>' + POSITIONS.map(p => `<option value="${p}">${p}</option>`).join(''); // only Kitchen Staff and Dine Staff
 ['#e-q', '#e-pos', '#e-st'].forEach(s => $(s).addEventListener('input', renderEmployees));
 
 /* ---------- Add / edit employee wizard ---------- */
-const POSITIONS = ['Barista', 'Cashier', 'Kitchen staff', 'Server', 'Dishwasher'];
-const LABELS = { 1: 'Continue to Face Registration →', 2: 'Continue to Review →', 3: 'Generate ID & save' };
+const LABELS = { 1: 'Continue to Review →', 2: 'Generate ID & save' };
 const modal = $('#emp-modal');
 let editId = null, W = null;
 const nextEmpId = () => 'EMP-' + pad(Math.max(0, ...Object.keys(EMP).map(k => +k.slice(4))) + 1);
@@ -348,19 +338,17 @@ function paintPhoto() {
   $('#p-prev').innerHTML = W.photo ? `<img src="${W.photo}" alt="Employee photo">` : 'No photo';
   $('#p-rm').disabled = !W.photo;
 }
-function paintFace() { $('#f-face').textContent = W.face ? '✓ Face registered' : 'Not registered yet'; }
 
 function setWiz(n) {
   stopCam(); W.step = n;
   $$('#emp-form [data-step]').forEach(s => s.classList.toggle('hidden', +s.dataset.step !== n));
   $$('#emp-form [data-dot]').forEach(d => { const k = +d.dataset.dot; d.classList.toggle('on', k <= n); d.textContent = k < n ? '✓' : k; });
   $$('#emp-form [data-lbl]').forEach(l => l.style.color = +l.dataset.lbl === n ? 'var(--text)' : '');
-  $('#emp-sub').textContent = ['Fill in the details below to add a new employee.', 'Register the employee’s face for attendance.', 'Check everything, then generate the employee ID.'][n - 1];
+  $('#emp-sub').textContent = ['Fill in the details below to add a new employee.', 'Check everything, then generate the employee ID.'][n - 1];
   $('#f-back').classList.toggle('hidden', n === 1);
   $('#f-next').textContent = LABELS[n];
-  if (n === 2) { paintFace(); cam($('#rv'), 'user', $('#rmsg'), $('#rframe')); }
-  if (n === 3) {
-    $('#f-sum').innerHTML = [['Employee ID', W.id], ['Name', W.name], ['Position', W.pos], ['Rate per hour', peso(W.rate)], ['Date hired', fmtDate(W.hired)], ['Face', W.face ? 'Registered' : 'Not registered']]
+  if (n === 2) {
+    $('#f-sum').innerHTML = [['Employee ID', W.id], ['Name', W.name], ['Position', W.pos], ['Rate per hour', peso(W.rate)], ['Contact number', W.contact], ['Date hired', fmtDate(W.hired)]]
       .map(([k, v]) => `<div class="flex justify-between border-b hair pb-2"><dt class="muted">${k}</dt><dd>${esc(v)}</dd></div>`).join('');
     $('#f-idbig').textContent = W.id;
     $('#f-qr').innerHTML = typeof qrcode === 'undefined' ? '' : qrSvg(W.id);
@@ -368,15 +356,16 @@ function setWiz(n) {
 }
 
 function readStep1() {
-  const v = { name: $('#f-name').value.trim(), pos: $('#f-pos').value, rate: parseFloat($('#f-rate').value), hired: $('#f-hired').value };
+  const v = { name: $('#f-name').value.trim(), pos: $('#f-pos').value, rate: parseFloat($('#f-rate').value), hired: $('#f-hired').value, contact: fmtPhone($('#f-contact').value) };
   if (!v.name || !v.pos || !(v.rate > 0) || !v.hired) { toast('Enter the name, position, rate and date hired.', 'err'); return false; }
+  if (!v.contact) { toast('Enter a valid mobile number, for example 0917 123 4567.', 'err'); return false; }
   Object.assign(W, v); return true;
 }
 
 function openEmp(id) {
   editId = id || null;
-  const e = id ? EMP[id] : { name: '', pos: '', rate: '', hired: new Date().toISOString().slice(0, 10), shift: 0, active: true, contact: '', photo: '', face: false };
-  W = { step: 1, id: id || nextEmpId(), photo: e.photo || '', face: !!e.face };
+  const e = id ? EMP[id] : { name: '', pos: '', rate: '', hired: dkey(new Date()), shift: 0, active: true, contact: '', photo: '' };
+  W = { step: 1, id: id || nextEmpId(), photo: e.photo || '' };
   const opts = [...new Set([...POSITIONS, ...(e.pos ? [e.pos] : [])])];
   $('#f-pos').innerHTML = '<option value="">Select position</option>' + opts.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
   $('#emp-title').textContent = id ? `Edit ${id}` : 'Add Employee';
@@ -391,8 +380,8 @@ function saveEmp(draft) {
   if (!readStep1()) { if (W.step !== 1) setWiz(1); return; }
   const old = EMP[W.id] || {};
   EMP[W.id] = withShift({
-    name: W.name, pos: W.pos, rate: W.rate, hired: W.hired, photo: W.photo, face: W.face, draft,
-    contact: $('#f-contact').value.trim(), shift: +$('#f-shift').value,
+    name: W.name, pos: W.pos, rate: W.rate, hired: W.hired, photo: W.photo, draft,
+    contact: W.contact, shift: +$('#f-shift').value,
     active: draft ? false : (editId ? old.active !== false || old.draft === true : true),
   });
   saveEmps(); closeEmp(); renderEmployees();
@@ -406,7 +395,6 @@ $('#f-back').addEventListener('click', () => setWiz(W.step - 1));
 $('#f-draft').addEventListener('click', () => saveEmp(true));
 $('#f-next').addEventListener('click', () => {
   if (W.step === 1) { if (readStep1()) setWiz(2); }
-  else if (W.step === 2) { if (W.face) setWiz(3); else toast('Capture the employee’s face to continue.', 'err'); }
   else saveEmp(false);
 });
 $('#p-up').addEventListener('click', () => $('#f-file').click());
@@ -426,11 +414,6 @@ function squareThumb(src, w, h) { // 256px square JPEG keeps localStorage small
   c.getContext('2d').drawImage(src, (w - s) / 2, (h - s) / 2, s, s, 0, 0, 256, 256);
   return c.toDataURL('image/jpeg', .8);
 }
-$('#f-snap').addEventListener('click', () => {
-  const v = $('#rv');
-  if (v.videoWidth) { W.photo = squareThumb(v, v.videoWidth, v.videoHeight); paintPhoto(); }
-  W.face = true; paintFace(); // registration is simulated; works without a camera too
-});
 
 $('#emp-rows').addEventListener('click', e => {
   const k = e.target.closest('[data-csel]'); if (k) { k.checked ? eSel.add(k.dataset.csel) : eSel.delete(k.dataset.csel); return; }
@@ -444,19 +427,18 @@ $('#emp-rows').addEventListener('click', e => {
 /* ---------- Edit existing employee (ID, hire date and face registration are read-only) ---------- */
 const eModal = $('#edit-modal');
 let xId = null, xPhoto = '';
-$('#x-shift').innerHTML = $('#f-shift').innerHTML;
 function paintX() {
   $('#x-prev').innerHTML = xPhoto ? `<img src="${xPhoto}" alt="Employee photo" class="w-full h-full object-cover">` : esc(initials(EMP[xId].name));
   $('#x-rm').disabled = !xPhoto;
 }
 function openEdit(id) {
   xId = id; const e = EMP[id]; xPhoto = e.photo || '';
-  $('#x-info').innerHTML = [['Employee ID', id], ['Date hired', fmtDate(e.hired)], ['Face', e.face ? 'Registered' : 'Not registered']]
+  $('#x-info').innerHTML = [['Employee ID', id], ['Date hired', fmtDate(e.hired)]]
     .map(([k, v]) => `<div><dt class="muted text-xs">${k}</dt><dd class="mt-0.5">${esc(v)}</dd></div>`).join('');
   const opts = [...new Set([...POSITIONS, e.pos])];
   $('#x-pos').innerHTML = opts.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
   $('#x-name').value = e.name; $('#x-pos').value = e.pos; $('#x-rate').value = e.rate || '';
-  $('#x-shift').value = e.shift; $('#x-contact').value = e.contact || ''; $('#x-status').value = e.active ? 'active' : 'inactive';
+  $('#x-contact').value = e.contact || ''; $('#x-status').value = e.active ? 'active' : 'inactive';
   paintX(); eModal.classList.remove('hidden'); eModal.classList.add('flex'); $('#x-name').focus();
 }
 const closeEdit = () => { eModal.classList.add('hidden'); eModal.classList.remove('flex'); };
@@ -478,8 +460,9 @@ $('#x-form').addEventListener('submit', e => {
   e.preventDefault();
   const name = $('#x-name').value.trim(), rate = parseFloat($('#x-rate').value);
   if (!name || !(rate > 0)) { toast('Enter the name and a rate per hour.', 'err'); return; }
-  EMP[xId] = withShift({ ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: $('#x-contact').value.trim(),
-    shift: +$('#x-shift').value, active: $('#x-status').value === 'active', photo: xPhoto });
+  const ph = fmtPhone($('#x-contact').value); if (!ph) { toast('Enter a valid mobile number, for example 0917 123 4567.', 'err'); return; }
+  EMP[xId] = withShift({ ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: ph,
+    active: $('#x-status').value === 'active', photo: xPhoto });
   saveEmps(); closeEdit(); renderEmployees(); toast('Employee updated.');
 });
 
@@ -518,15 +501,15 @@ const toTime = m => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${Strin
 const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
 let wk = mondayOf(new Date()), sEdit = null;
 
+const YMD = { month: 'short', day: 'numeric', year: 'numeric' };
 function renderSchedule() {
   const days = [...Array(7)].map((_, i) => addDays(wk, i)), a = days[0], b = days[6], todayK = dkey(new Date());
-  $('#s-range').textContent = a.getMonth() === b.getMonth()
+  $('#s-range').textContent = a.getFullYear() !== b.getFullYear()
+    ? `${a.toLocaleDateString('en-US', YMD)} – ${b.toLocaleDateString('en-US', YMD)}`
+    : a.getMonth() === b.getMonth()
     ? `${a.toLocaleDateString('en-US', { month: 'long' })} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`
     : `${a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${b.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${b.getFullYear()}`;
   const staff = Object.entries(EMP).filter(([, e]) => e.active && !e.draft);
-  const cur = $('#s-pos').value, poss = [...new Set(staff.map(([, e]) => e.pos))].sort();
-  $('#s-pos').innerHTML = '<option value="">All positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-  $('#s-pos').value = poss.includes(cur) ? cur : '';
   const q = $('#s-q').value.trim().toLowerCase(), pf = $('#s-pos').value;
   const rows = staff.filter(([id, e]) => (!q || `${id} ${e.name}`.toLowerCase().includes(q)) && (!pf || e.pos === pf));
   $('#s-head').innerHTML = '<tr><th class="text-left font-normal muted py-2 sticky left-0 z-10" style="background:var(--surface)">Employee</th>' + days.map(d => {
@@ -537,12 +520,14 @@ function renderSchedule() {
     <div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}
     <div class="leading-tight"><div class="font-medium">${esc(e.name)}</div><div class="muted text-xs">${esc(e.pos)}</div></div></div></td>` + days.map(d => {
       const s = getSched(id, d);
-      return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${s.t}" data-id="${id}" data-d="${dkey(d)}"><b>${TYPE_LABEL[s.t]}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
+      if (d < new Date(e.hired + 'T00:00')) return '<td class="p-0 align-top min-w-[112px]"><div class="sc muted" style="background:transparent;border-left-color:transparent">Not yet hired</div></td>';
+      return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${s.in != null ? 'work' : 'off'}" data-id="${id}" data-d="${dkey(d)}"><b>${s.in != null ? 'Scheduled' : 'Day off'}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
     }).join('') + '</tr>').join('') : '<tr><td colspan="8" class="py-8 text-center muted">No employees match your filters.</td></tr>';
 }
 $('#s-prev').addEventListener('click', () => { wk = addDays(wk, -7); renderSchedule(); });
 $('#s-next').addEventListener('click', () => { wk = addDays(wk, 7); renderSchedule(); });
 $('#s-today').addEventListener('click', () => { wk = mondayOf(new Date()); renderSchedule(); });
+$('#s-pos').innerHTML = '<option value="">All positions</option>' + POSITIONS.map(p => `<option value="${p}">${p}</option>`).join(''); // only Kitchen Staff and Dine Staff
 ['#s-q', '#s-pos'].forEach(s => $(s).addEventListener('input', renderSchedule));
 
 const sModal = $('#sch-modal');
@@ -552,15 +537,14 @@ function openSch(id, key) {
   sEdit = { id, key };
   $('#s-info').innerHTML = [['Employee', esc(e.name)], ['Date', d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })]]
     .map(([k, v]) => `<div class="flex justify-between"><dt class="muted">${k}</dt><dd>${v}</dd></div>`).join('');
-  const t = s.in != null ? s.t : (TYPE_BY_SHIFT[e.shift] || 'morning'), p = SHIFT_TYPES[t];
-  $('#s-status').value = s.in != null ? 'work' : s.t;
-  $('#s-type').value = t; $('#s-in').value = toTime(s.in ?? p.in); $('#s-out').value = toTime(s.out ?? p.out);
+  const p = SHIFT_TYPES[TYPE_BY_SHIFT[e.shift] || 'morning']; // default times come from the employee's default shift
+  $('#s-status').value = s.in != null ? 'work' : 'off';
+  $('#s-in').value = toTime(s.in ?? p.in); $('#s-out').value = toTime(s.out ?? p.out);
   paintWork(); sModal.classList.remove('hidden'); sModal.classList.add('flex');
 }
 const closeSch = () => { sModal.classList.add('hidden'); sModal.classList.remove('flex'); };
 $('#s-rows').addEventListener('click', e => { const b = e.target.closest('.sc'); if (b) openSch(b.dataset.id, b.dataset.d); });
 $('#s-status').addEventListener('change', paintWork);
-$('#s-type').addEventListener('change', () => { const p = SHIFT_TYPES[$('#s-type').value]; $('#s-in').value = toTime(p.in); $('#s-out').value = toTime(p.out); });
 $('#s-x').addEventListener('click', closeSch); $('#s-cancel').addEventListener('click', closeSch);
 addEventListener('keydown', e => { if (e.key === 'Escape') closeSch(); });
 $('#s-form').addEventListener('submit', e => {
@@ -569,7 +553,7 @@ $('#s-form').addEventListener('submit', e => {
   if (st === 'work') {
     if (!$('#s-in').value || !$('#s-out').value) { toast('Enter the time in and time out.', 'err'); return; }
     const i = toMin($('#s-in').value); let o = toMin($('#s-out').value); if (o <= i) o += 1440; // ends after midnight
-    v = { t: $('#s-type').value, in: i, out: o };
+    v = { t: i >= 840 ? 'night' : i >= 570 ? 'afternoon' : 'morning', in: i, out: o }; // internal shift type, derived from the start time
   } else v = { t: st };
   (SCH[sEdit.key] = SCH[sEdit.key] || {})[sEdit.id] = v; saveSch(); closeSch(); renderSchedule(); toast('Schedule updated.');
 });
@@ -583,42 +567,43 @@ const schedShort = s => `${fmtShort(s.in).replace(' ', '')}–${fmtShort(s.out).
 const ATT_BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], upcoming: ['b-muted', 'Upcoming'], off: ['b-muted', 'Day off'], leave: ['b-muted', 'On leave'] };
 const minOf = t => { const q = new Date(t); return q.getHours() * 60 + q.getMinutes(); };
 
-function attRecord(id, d) {
+function attRecord(id, d) { // up to 4 scans a day: time in, break out, break in, time out
   const key = dkey(d), s = getSched(id, d), isToday = key === dkey(new Date()), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  const r = { id, e: EMP[id], d, s, tin: null, tout: null, running: false, hrs: 0, ot: 0 };
+  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0, ot: 0 };
   if (s.in == null) return { ...r, st: s.t };
-  if (isToday) {
-    const L = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key), f = L.find(x => x.type === 'in');
-    if (f) { r.tin = minOf(f.ts); const last = L[L.length - 1]; if (last.type === 'out') r.tout = minOf(last.ts); }
-  } else if (hsh(id + key) % 100 >= 7) { // demo history: deterministic, so the same day always shows the same record
-    r.tin = s.in + (hsh(key + id) % 35) - 12; r.tout = s.out + (hsh(id + 'o' + key) % 30) - 12;
+  if (isToday) r.t = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key).slice(0, 4).map(x => minOf(x.ts));
+  else if (hsh(id + key) % 100 >= 7) { // demo history: deterministic, so the same day always shows the same record
+    const tin = s.in + (hsh(key + id) % 35) - 12, tout = s.out + (hsh(id + 'o' + key) % 30) - 12;
+    const bo = Math.round((s.in + s.out) / 2) + (hsh(id + 'b' + key) % 21) - 10, bi = bo + 50 + (hsh(key + 'i' + id) % 21); // break of 50–70 min around mid-shift
+    r.t = [tin, bo, bi, tout];
   }
-  if (r.tin == null) return { ...r, st: isToday && nowMin < s.in ? 'upcoming' : 'absent' };
-  if (r.tout != null && r.tout < r.tin) r.tout += 1440; // out after midnight
-  r.running = isToday && r.tout == null;
-  r.hrs = (r.tout ?? nowMin) - r.tin; r.ot = r.tout != null ? Math.max(0, r.tout - s.out) : 0;
+  if (!r.t.length) return { ...r, st: isToday && nowMin < s.in ? 'upcoming' : 'absent' };
+  for (let i = 1; i < r.t.length; i++) if (r.t[i] < r.t[i - 1]) r.t[i] += 1440; // scan after midnight
+  const n = r.t.length;
+  r.tin = r.t[0]; r.tout = n >= 4 ? r.t[3] : null; // final time out only counts once all 4 scans are in (2 scans = on break, not gone home)
+  r.running = isToday && n % 2 === 1; r.onBreak = isToday && n === 2;
+  for (let i = 0; i < n; i += 2) { // hours worked = time in → time out for each half, so the break is excluded
+    const st = r.t[i]; let en = r.t[i + 1];
+    if (en == null) { en = nowMin; if (en < st) en += 1440; }
+    r.hrs += Math.max(0, en - st);
+  }
+  r.ot = r.tout != null ? Math.max(0, r.tout - s.out) : 0; // still used by payroll; just not shown in this table
   r.st = r.tin > s.in + GRACE ? 'late' : 'present';
   return r;
 }
 function attDates() {
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  if (aMode === 'today') return [now];
-  if (aMode === 'date') return [new Date($('#a-date').value + 'T00:00')];
-  const start = aMode === 'week' ? mondayOf(now) : new Date(now.getFullYear(), now.getMonth(), 1), out = [];
-  for (let d = new Date(now); d >= start; d = addDays(d, -1)) out.push(new Date(d));
-  return out;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  return aMode === 'date' && $('#a-date').value ? [new Date($('#a-date').value + 'T00:00')] : [t];
 }
+const A_COLS = [['ID'], ['Employee'], ['Scheduled'], ['Time In', 'Shift start'], ['Time Out', 'Break start'], ['Time In', 'Break end'], ['Time Out', 'Shift end'], ['Hours Worked'], ['Status']];
+$('#a-pos').innerHTML = '<option value="">All Positions</option>' + POSITIONS.map(p => `<option value="${p}">${p}</option>`).join(''); // only Kitchen Staff and Dine Staff
 function renderAttendance() {
-  const multi = aMode === 'week' || aMode === 'month', todayK = dkey(new Date());
+  const todayK = dkey(new Date());
   if (aMode !== 'date') $('#a-date').value = ''; $('#a-date').max = todayK;
   $$('#a-modes button').forEach(b => b.className = b.dataset.mode === aMode ? 'btn text-sm' : 'ghost text-sm');
   const staff = Object.entries(EMP).filter(([, e]) => e.active && !e.draft);
-  const cur = $('#a-pos').value, poss = [...new Set(staff.map(([, e]) => e.pos))].sort();
-  $('#a-pos').innerHTML = '<option value="">All Positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-  $('#a-pos').value = poss.includes(cur) ? cur : '';
   const q = $('#a-q').value.trim().toLowerCase(), pf = $('#a-pos').value, sf = $('#a-st').value, dates = attDates();
-  $('#a-label').textContent = multi ? `${dates[dates.length - 1].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${dates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-    : dates[0].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  $('#a-label').textContent = dates[0].toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   const recs = [];
   dates.forEach(d => staff.forEach(([id, e]) => {
     if (d < new Date(e.hired + 'T00:00') || (pf && e.pos !== pf) || (q && !`${id} ${e.name}`.toLowerCase().includes(q))) return;
@@ -626,19 +611,16 @@ function renderAttendance() {
   }));
   const pages = Math.max(1, Math.ceil(recs.length / PER_PAGE)); aPage = Math.min(aPage, pages);
   const from = (aPage - 1) * PER_PAGE, part = recs.slice(from, from + PER_PAGE);
-  $('#a-head').innerHTML = ['ID', 'Employee', ...(multi ? ['Date'] : []), 'Scheduled', 'Time In', 'Time Out', 'Hours', 'OT', 'Status'].map(h => `<th class="py-2 font-normal pr-3">${h}</th>`).join('');
+  $('#a-head').innerHTML = A_COLS.map(([h, t]) => `<th class="py-2 font-normal pr-3"${t ? ` title="${t}"` : ''}>${h}</th>`).join('');
   $('#a-rows').innerHTML = part.length ? part.map(r => {
-    const w = r.s.in != null, b = ATT_BADGE[r.st];
+    const w = r.s.in != null, b = ATT_BADGE[r.st], live = r.running || r.onBreak;
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${r.id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${r.e.photo ? `<img class="avatar" src="${r.e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(r.e.name)}</span>`}<div class="leading-tight"><div>${esc(r.e.name)}</div><div class="muted text-xs">${esc(r.e.pos)}</div></div></div></td>
-    ${multi ? `<td class="pr-3 whitespace-nowrap">${r.d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>` : ''}
     <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}</td>
-    <td class="pr-3 whitespace-nowrap">${r.tin != null ? fmtMin(r.tin) : '—'}</td>
-    <td class="pr-3 whitespace-nowrap">${r.tout != null ? fmtMin(r.tout) : '—'}</td>
-    <td class="pr-3 whitespace-nowrap ${r.running ? 'muted' : ''}" ${r.running ? 'title="Still clocked in"' : ''}>${fmtHM(r.hrs)}</td>
-    <td class="pr-3 whitespace-nowrap">${fmtHM(r.ot)}</td>
+    ${[0, 1, 2, 3].map(i => `<td class="pr-3 whitespace-nowrap">${r.t[i] != null ? fmtMin(r.t[i]) : '—'}</td>`).join('')}
+    <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${r.t.length ? fmtHM(r.hrs) : '—'}</td>
     <td><span class="badge ${b[0]}">${b[1]}</span></td></tr>`;
-  }).join('') : `<tr class="border-t hair"><td colspan="${multi ? 9 : 8}" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
+  }).join('') : `<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
   $('#a-count').textContent = recs.length ? `Showing ${from + 1} to ${from + part.length} of ${recs.length} records` : 'Showing 0 records';
   const nums = []; for (let p = Math.max(1, aPage - 2); p <= Math.min(pages, Math.max(aPage + 2, 5)); p++) nums.push(p);
   $('#a-pager').innerHTML = `<button class="ghost !px-3" data-p="${aPage - 1}" ${aPage === 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>`
@@ -658,8 +640,11 @@ $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefau
    Absences are NOT deducted: payroll pays only hours worked (avoids double-deducting). */
 const DEF_RATE = 80, UNDER_GRACE = 5, MAX_DAYS = 92; // fallback ₱/hr for employees without a rate; undertime grace (min); max range
 const DED_TYPES = { tardiness: 'Tardiness', undertime: 'Undertime', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
-const DED_MANUAL = ['advance', 'uniform', 'lostid', 'other'];
+const DED_MANUAL = ['advance', 'uniform', 'lostid']; // fixed manual types; "Other" is added last and lets the admin type a new one
 const DED_BADGE = { tardiness: 'b-err', undertime: 'b-warn', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
+const DED_CUSTOM = store.get('dedTypes', []).filter(c => c && c.k && c.label); // types typed via "Other": [{ k, label }]. Empty at first, saved in localStorage
+DED_CUSTOM.forEach(c => { DED_TYPES[c.k] = c.label; DED_BADGE[c.k] = 'b-muted'; });
+const dedName = t => DED_TYPES[t] || 'Other'; // safe label lookup (call esc() when putting it in HTML)
 const rateOf = id => EMP[id]?.rate > 0 ? EMP[id].rate : DEF_RATE;
 const dedAmt = (id, mins) => Math.round(rateOf(id) / 60 * mins * 100) / 100; // hourly rate ÷ 60 × minutes
 const num = n => Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -717,7 +702,7 @@ function renderDeductions() {
   $('#d-rows').innerHTML = part.length ? part.map(x => { const e = EMP[x.id];
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${fmtDate(x.date)}</td><td class="pr-3 whitespace-nowrap">${x.id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
-    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3"><span class="badge ${DED_BADGE[x.type]}">${DED_TYPES[x.type]}</span></td>
+    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3"><span class="badge ${DED_BADGE[x.type] || 'b-muted'}">${esc(dedName(x.type))}</span></td>
     <td class="pr-3 whitespace-nowrap">${num(x.amount)}</td><td class="pr-3">${esc(x.remarks || '—')}</td><td class="pr-3"><span class="badge b-ok">Applied</span></td>
     <td class="whitespace-nowrap">${x.auto ? '<span class="muted text-xs" title="Generated from Attendance and Schedules">Automatic</span>' : `<button class="ghost !py-1 !px-2 text-xs" data-dedit="${x.k}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-ddel="${x.k}">Delete</button>`}</td></tr>`; }).join('')
     : '<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No deductions match your filters.</td></tr>';
@@ -725,8 +710,15 @@ function renderDeductions() {
   $('#d-pager').innerHTML = dpager(dPage, pages);
   $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) and undertime (over ${UNDER_GRACE} min) are generated from Attendance and Schedules: hourly rate ÷ 60 × minutes (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours and these deductions adjust for lateness and undertime.`;
 }
-$('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + Object.entries(DED_TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
-$('#dm-type').innerHTML = DED_MANUAL.map(k => `<option value="${k}">${DED_TYPES[k]}</option>`).join('');
+function refreshDedTypes(pick) { // keeps the filter and the Add deduction drop-down in step with the saved types
+  const opt = (k, v) => `<option value="${esc(k)}">${esc(v)}</option>`, cf = $('#d-type').value;
+  $('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + Object.entries(DED_TYPES).map(([k, v]) => opt(k, v)).join('');
+  $('#d-type').value = DED_TYPES[cf] ? cf : '';
+  $('#dm-type').innerHTML = [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other'].map(k => opt(k, DED_TYPES[k])).join(''); // "Other" always last
+  if (pick) $('#dm-type').value = pick;
+}
+function resetDedTypes() { DED_CUSTOM.forEach(c => { delete DED_TYPES[c.k]; delete DED_BADGE[c.k]; }); DED_CUSTOM.length = 0; store.set('dedTypes', DED_CUSTOM); refreshDedTypes(); }
+refreshDedTypes();
 ['#d-per', '#d-from', '#d-to', '#d-emp', '#d-type', '#d-q'].forEach(s => $(s).addEventListener('input', () => { dPage = 1; renderDeductions(); }));
 $('#d-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { dPage = +b.dataset.p; renderDeductions(); } });
 
@@ -737,10 +729,25 @@ function openDed(k) {
   $('#dm-emp').innerHTML = '<option value="">Select employee</option>' + Object.entries(EMP).filter(([id, e]) => (e.active && !e.draft) || id === r?.id).map(([id, e]) => `<option value="${id}">${id} · ${esc(e.name)}</option>`).join('');
   $('#dm-title').textContent = r ? 'Edit deduction' : 'Add deduction';
   $('#dm-emp').value = r?.id || ''; $('#dm-type').value = r?.type || 'advance'; $('#dm-date').value = r?.date || dkey(new Date()); $('#dm-date').max = dkey(new Date());
-  $('#dm-amt').value = r?.amount ?? ''; $('#dm-rem').value = r?.remarks || '';
+  $('#dm-amt').value = r?.amount ?? ''; $('#dm-rem').value = r?.remarks || ''; $('#dm-other').value = ''; paintOther();
   dModal.classList.remove('hidden'); dModal.classList.add('flex'); $('#dm-emp').focus();
 }
 const closeDed = () => { dModal.classList.add('hidden'); dModal.classList.remove('flex'); };
+const paintOther = () => $('#dm-other-w').classList.toggle('hidden', $('#dm-type').value !== 'other'); // typing box only shows for "Other"
+function commitOther() { // the typed name becomes a saved deduction type. Returns its key, null (keep a legacy "Other" record as is) or false (invalid)
+  const name = $('#dm-other').value.trim().replace(/\s+/g, ' '), low = name.toLowerCase();
+  if (!name) { if (dEdit && DED.find(x => x.k === dEdit)?.type === 'other') return null; toast('Type the deduction name.', 'err'); $('#dm-other').focus(); return false; }
+  if (low === 'other') { toast('Type a specific name instead of “Other”.', 'err'); $('#dm-other').focus(); return false; }
+  const hit = Object.entries(DED_TYPES).find(([, v]) => v.toLowerCase() === low); // already in the list: reuse it, no duplicates
+  if (hit) { if (!DED_MANUAL.includes(hit[0]) && !DED_CUSTOM.some(c => c.k === hit[0])) { toast('Tardiness and Undertime are generated automatically.', 'err'); return false; } return hit[0]; }
+  const k = 'c' + Date.now().toString(36); DED_CUSTOM.push({ k, label: name }); DED_TYPES[k] = name; DED_BADGE[k] = 'b-muted';
+  store.set('dedTypes', DED_CUSTOM); refreshDedTypes(k); toast('Deduction type added.'); return k;
+}
+$('#dm-type').addEventListener('change', () => { paintOther(); if (!$('#dm-other-w').classList.contains('hidden')) $('#dm-other').focus(); });
+$('#dm-other').addEventListener('keydown', e => { // Enter saves the typed name to the drop-down straight away instead of submitting the form
+  if (e.key !== 'Enter') return; e.preventDefault();
+  const k = commitOther(); if (k) { $('#dm-type').value = k; $('#dm-other').value = ''; paintOther(); }
+});
 $('#add-ded').addEventListener('click', () => openDed());
 $('#dm-x').addEventListener('click', closeDed); $('#dm-cancel').addEventListener('click', closeDed);
 addEventListener('keydown', e => { if (e.key === 'Escape') closeDed(); });
@@ -749,7 +756,9 @@ $('#dm-form').addEventListener('submit', e => {
   const id = $('#dm-emp').value, amount = Math.round(parseFloat($('#dm-amt').value) * 100) / 100, date = $('#dm-date').value;
   if (!id || !date || !(amount > 0)) { toast('Select an employee, date and an amount above zero.', 'err'); return; }
   if (date > dkey(new Date())) { toast('The date can’t be in the future.', 'err'); return; }
-  const rec = { k: dEdit || 'm-' + Date.now() + Math.random().toString(36).slice(2, 5), id, type: $('#dm-type').value, amount, date, remarks: $('#dm-rem').value.trim() };
+  let type = $('#dm-type').value;
+  if (type === 'other') { const k = commitOther(); if (k === false) return; type = k || 'other'; }
+  const rec = { k: dEdit || 'm-' + Date.now() + Math.random().toString(36).slice(2, 5), id, type, amount, date, remarks: $('#dm-rem').value.trim() };
   const i = DED.findIndex(x => x.k === dEdit); if (i >= 0) DED[i] = rec; else DED.push(rec);
   saveDed(); closeDed(); renderDeductions(); toast(dEdit ? 'Deduction updated.' : 'Deduction added.');
 });
@@ -787,6 +796,7 @@ function payCalc(id, from, to, A) {
   c.rate = rateOf(id); const R = m => Math.round(c.rate / 60 * m * 100) / 100;
   c.basic = R(c.reg); c.otPay = Math.round(R(c.ot) * OT_MULT * 100) / 100; c.gross = Math.round((c.basic + c.otPay) * 100) / 100;
   c.ded = c.ds.reduce((s, x) => s + x.amount, 0); c.net = Math.max(0, c.gross - c.ded);
+  c.log = dayLog(id, from); // day-by-day record, frozen with the payroll snapshot
   return c;
 }
 function payGet(id, s, A) { // processed records come from the frozen snapshot, everything else is live
@@ -877,15 +887,16 @@ $('#p-adv').addEventListener('click', () => {
 $('#h-rows').addEventListener('click', e => { const b = e.target.closest('[data-hp]'); if (b) { hSel = b.dataset.hp; hPage = 1; renderPayroll(); } });
 $('#hd-back').addEventListener('click', () => { hSel = null; renderPayroll(); });
 const pModal = $('#pay-modal');
-function openPay(id, s, slip) {
+function openPay(id, s, slip, ro) {
   pOpen = { id, s, slip }; const e = EMP[id], c = payGet(id, s), st = pStatus(s, id);
   const line = (k, v, b) => `<div class="flex justify-between ${b ? 'font-semibold' : ''}"><dt class="${b ? '' : 'muted'}">${k}</dt><dd>${v}</dd></div>`;
   $('#pm-title').textContent = slip ? 'Payslip' : 'Payroll details';
   $('#pm-body').innerHTML = `<div><div class="font-medium">${esc(e.name)}</div><div class="muted">${id} · ${esc(e.pos)}</div><div class="muted text-xs mt-1">Pay period: ${fmR(s)} · <span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></div></div>
   <div><h3 class="font-medium mb-2">Attendance summary</h3><dl class="space-y-1 border-t hair pt-2">${line('Scheduled days', c.days)}${line('Days present', c.present)}${line('Late', c.late)}${line('Absent', c.absent)}${line('Total hours', fmtHM(c.mins))}</dl></div>
-  <div><h3 class="font-medium mb-2">Payroll</h3><dl class="space-y-1 border-t hair pt-2">${line('Basic rate', peso(c.rate) + '/hr')}${line('Regular pay (' + fmtHM(c.reg) + ')', peso(c.basic))}${c.ot ? line('Overtime (' + fmtHM(c.ot) + ' × 1.25)', peso(c.otPay)) : ''}${line('Gross pay', peso(c.gross))}${c.ds.map(x => line(`${DED_TYPES[x.type]} <span class="text-xs">(${fmtDate(x.date)})</span>`, '− ' + num(x.amount))).join('')}${line('Total deductions', peso(c.ded))}<div class="border-t hair pt-2">${line('NET PAY', peso(c.net), 1)}</div></dl></div>
+  <div><h3 class="font-medium mb-2">Payroll</h3><dl class="space-y-1 border-t hair pt-2">${line('Basic rate', peso(c.rate) + '/hr')}${line('Regular pay (' + fmtHM(c.reg) + ')', peso(c.basic))}${c.ot ? line('Overtime (' + fmtHM(c.ot) + ' × 1.25)', peso(c.otPay)) : ''}${line('Gross pay', peso(c.gross))}${c.ds.map(x => line(`${esc(dedName(x.type))} <span class="text-xs">(${fmtDate(x.date)})</span>`, '− ' + num(x.amount))).join('')}${line('Total deductions', peso(c.ded))}<div class="border-t hair pt-2">${line('NET PAY', peso(c.net), 1)}</div></dl></div>
   ${c.lates.length ? `<div><h3 class="font-medium mb-2">Late attendance</h3><ul class="space-y-2">${c.lates.map(l => `<li class="card p-3"><div>${l.d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${fmtMin(l.tin)}</div><div class="muted text-xs">Scheduled ${fmtMin(l.sin)} · Late by ${l.tin - l.sin} min</div></li>`).join('')}</ul></div>` : ''}`;
-  const nx = PAY_NEXT[st], a = $('#pm-act'); a.classList.toggle('hidden', !nx || slip); if (nx) a.textContent = nx[1];
+  const nx = PAY_NEXT[st], a = $('#pm-act'); a.classList.toggle('hidden', !(nx && !slip && !ro)); // always a real boolean: toggle(x, undefined) flips instead of forcing // reports are read-only
+  if (nx) a.textContent = nx[1];
   pModal.classList.remove('hidden'); pModal.classList.add('flex');
 }
 const closePay = () => { pModal.classList.add('hidden'); pModal.classList.remove('flex'); };
@@ -895,10 +906,130 @@ $('#pm-act').addEventListener('click', () => { payAdv(pOpen.s, pOpen.id); savePa
 const payClick = (e, s) => {
   const b = e.target.closest('button'), c = e.target.closest('[data-sel]');
   if (c) { c.checked ? pSel.add(c.dataset.sel) : pSel.delete(c.dataset.sel); return; }
-  if (b && b.dataset.pv) openPay(b.dataset.pv, s); else if (b && b.dataset.ps && !b.disabled) openPay(b.dataset.ps, s, true);
+  if (b && b.dataset.pv) openPay(b.dataset.pv, s); else if (b && b.dataset.ps && !b.disabled) psGoto(b.dataset.ps, s);
 };
 $('#p-rows').addEventListener('click', e => payClick(e, curStart()));
 $('#hd-rows').addEventListener('click', e => payClick(e, new Date(hSel + 'T00:00')));
+
+/* ---------- Reports: read-only analysis of generated payroll (current period + history) ---------- */
+const hrs2 = m => (m / 60).toFixed(2);
+let rPage = 1, rView = { rows: [], s: null };
+function renderReports() {
+  const ks = [...new Set([...Object.keys(PAY).map(k => k.slice(0, 10)), dkey(curStart())])].sort().reverse(), cur = $('#r-per').value;
+  $('#r-per').innerHTML = ks.map(k => `<option value="${k}">${fmR(new Date(k + 'T00:00'))}${k === dkey(curStart()) ? ' (current)' : ''}</option>`).join('');
+  $('#r-per').value = ks.includes(cur) ? cur : (ks.find(k => payRows(new Date(k + 'T00:00'), true).length) || ks[0]); // default: latest period with records
+  const s = new Date($('#r-per').value + 'T00:00'), all = payRows(s, true), prev = payRows(addDays(s, -7), true);
+  $('#r-label').textContent = `Pay period: ${fmR(s)}`;
+  const ce = $('#r-emp').value, cp = $('#r-pos').value, poss = [...new Set(all.map(r => r.e.pos))].sort();
+  $('#r-emp').innerHTML = '<option value="">All Employees</option>' + all.map(r => `<option value="${r.id}">${esc(r.e.name)}</option>`).join('');
+  $('#r-emp').value = all.some(r => r.id === ce) ? ce : '';
+  $('#r-pos').innerHTML = '<option value="">All Positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  $('#r-pos').value = poss.includes(cp) ? cp : '';
+  const q = $('#r-q').value.trim().toLowerCase(), ef = $('#r-emp').value, pf = $('#r-pos').value, sf = $('#r-st').value;
+  const f = r => (!q || `${r.id} ${r.e.name}`.toLowerCase().includes(q)) && (!ef || r.id === ef) && (!pf || r.e.pos === pf) && (!sf || r.st === sf);
+  const rows = all.filter(f), pr = prev.filter(f); rView = { rows, s };
+  const sum = (l, k) => l.reduce((t, r) => t + r.c[k], 0), pending = rows.filter(r => r.st === 'review').length;
+  const dl = (cur, old, bad) => old > 0 ? `<span style="color:var(--${(cur >= old) !== !!bad ? 'ok' : 'err'})">${cur >= old ? '▲' : '▼'} ${Math.abs(Math.round((cur - old) / old * 100))}%</span> vs. previous period` : 'No previous period data';
+  $('#r-stats').innerHTML = [['Total employees', rows.length, 'for selected period'], ['Total gross pay', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))], ['Total deductions', peso(sum(rows, 'ded')), dl(sum(rows, 'ded'), sum(pr, 'ded'), 1)],
+    ['Total net pay', peso(sum(rows, 'net')), dl(sum(rows, 'net'), sum(pr, 'net'))], ['Total payroll cost', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))]]
+    .map(([l, v, n]) => `<div class="card p-4"><div class="muted text-sm">${l}</div><div class="text-2xl font-semibold mt-1">${v}</div><div class="muted text-xs mt-1">${n}</div></div>`).join('');
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); rPage = Math.min(rPage, pages);
+  const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
+  $('#r-rows').innerHTML = part.length ? part.map(({ id, e, c, st }) => `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
+    <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
+    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3">${hrs2(c.reg)}</td><td class="pr-3">${hrs2(c.ot)}</td><td class="pr-3">${num(c.basic)}</td><td class="pr-3">${num(c.otPay)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
+    <td class="pr-3"><span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></td>
+    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button> <button class="ghost !py-1 !px-2 text-xs" data-rp="${id}" ${st === 'processed' ? '' : 'disabled title="Available once payroll is processed"'}>View payslip</button></td></tr>`).join('')
+    : `<tr class="border-t hair"><td colspan="13" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Process Payroll.'}</td></tr>`;
+  $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
+  $('#r-pager').innerHTML = dpager(rPage, pages);
+  $('#r-sum').innerHTML = [['Total employees', rows.length], ['Total gross pay', peso(sum(rows, 'gross'))], ['Total deductions', peso(sum(rows, 'ded'))], ['Total net pay', peso(sum(rows, 'net'))], ['Pending review', pending]]
+    .map(([l, v]) => `<div><div class="muted text-xs">${l}</div><div class="font-semibold text-lg">${v}</div></div>`).join('');
+}
+['#r-per', '#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).addEventListener('input', () => { rPage = 1; renderReports(); }));
+$('#r-reset').addEventListener('click', () => { $('#r-per').value = ''; ['#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).value = ''); rPage = 1; renderReports(); });
+$('#r-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { rPage = +b.dataset.p; renderReports(); } });
+$('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, rView.s, false, true); else if (b.dataset.rp) psGoto(b.dataset.rp, rView.s); });
+$('#r-exp').addEventListener('click', e => { e.stopPropagation(); $('#r-menu').classList.toggle('hidden'); });
+addEventListener('click', () => $('#r-menu').classList.add('hidden'));
+addEventListener('afterprint', () => document.body.classList.remove('print-report'));
+$('#r-menu').addEventListener('click', e => {
+  const b = e.target.closest('[data-exp]'); if (!b) return;
+  if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
+  if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); window.print(); return; }
+  const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
+  const head = ['Employee ID', 'Employee Name', 'Position', 'Pay Period', 'Regular Hours', 'Overtime Hours', 'Basic Pay', 'Overtime Pay', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
+  const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.reg), hrs2(c.ot), c.basic.toFixed(2), c.otPay.toFixed(2), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
+  const t = k => rView.rows.reduce((x, r) => x + r.c[k], 0).toFixed(2);
+  lines.push(['TOTAL', '', '', per, '', '', t('basic'), t('otPay'), t('gross'), t('ded'), t('net'), '']);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + [head, ...lines].map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  a.download = `payroll-report_${dkey(s)}_to_${dkey(weekEnd(s))}.csv`; a.click(); URL.revokeObjectURL(a.href); toast('Report exported.');
+});
+
+/* ---------- Payslips: list first; the payslip itself only opens after View ---------- */
+const PS_ST = { none: ['b-muted', 'Not generated'], draft: ['b-muted', 'Not generated'], review: ['b-muted', 'Not generated'], approved: ['b-warn', 'For release'], processed: ['b-ok', 'Released'] };
+let psPage = 1, psSel = null; // psSel = { id, k: period start key }
+const longD = d => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+function dayLog(id, s) {
+  const today = new Date(); today.setHours(0, 0, 0, 0); const out = [], e = EMP[id];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(s, i); if (d > today) break;
+    const r = attRecord(id, d);
+    out.push({ d: dkey(d), st: d < new Date(e.hired + 'T00:00') ? 'na' : r.st, tin: r.tin, tout: r.tout, hrs: r.tin != null ? r.hrs : 0 });
+  }
+  return out;
+}
+function psHtml(id, s, st) {
+  const e = EMP[id], c = payGet(id, s), log = c.log || dayLog(id, s), g = {};
+  c.ds.forEach(x => g[x.type] = (g[x.type] || 0) + x.amount);
+  const att = log.map(l => { const d = new Date(l.d + 'T00:00'), lbl = { off: 'Day off', leave: 'On leave', absent: 'Absent' }[l.st] || '—';
+    return `<tr><td>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td><td>${d.toLocaleDateString('en-US', { weekday: 'short' })}</td><td>${l.tin != null ? fmtMin(l.tin) : `<span class="mu">${lbl}</span>`}</td><td>${l.tout != null ? fmtMin(l.tout) : '—'}</td><td class="r">${l.tin != null ? fmtHM(l.hrs) : '—'}</td></tr>`; }).join('');
+  const ded = Object.entries(g).map(([t, v]) => `<tr><td>${esc(dedName(t))}</td><td class="r">${num(v)}</td></tr>`).join('') || '<tr><td>No deductions</td><td class="r">0.00</td></tr>';
+  return `<div class="ps">${st === 'processed' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet.</div>'}
+  <div class="ps-head"><div><h2>EMPLOYEE PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">Bulacan, Philippines</div></div></div>
+  <dl class="ps-info"><dt>Employee Name</dt><dd>: ${esc(e.name)}</dd><dt>Employee ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(addDays(weekEnd(s), 1))}</dd></dl>
+  <h3>1. Attendance summary</h3><table><thead><tr><th>Date</th><th>Day</th><th>Time in</th><th>Time out</th><th class="r">Total hours</th></tr></thead><tbody>${att}<tr class="ps-tot"><td colspan="4" class="r">Total Hours Worked</td><td class="r">${fmtHM(c.mins)}</td></tr></tbody></table>
+  <div class="ps-cols"><div><h3>2. Earnings / gross pay</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>
+    <tr><td>Basic Pay (${peso(c.rate)}/hr × ${fmtHM(c.reg)})</td><td class="r">${num(c.basic)}</td></tr><tr><td>Overtime Pay (${fmtHM(c.ot)} × 1.25)</td><td class="r">${num(c.otPay)}</td></tr>
+    <tr class="ps-tot"><td>GROSS PAY</td><td class="r">${peso(c.gross)}</td></tr></tbody></table></div>
+  <div><h3>3. Deductions</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>${ded}<tr class="ps-tot"><td>TOTAL DEDUCTIONS</td><td class="r">${peso(c.ded)}</td></tr></tbody></table></div></div>
+  <div class="ps-net"><span>NET PAY</span><span>${peso(c.net)}</span></div>
+  <div class="ps-sig"><span>Thank you for your hard work!</span><span>Authorized Signature</span></div></div>`;
+}
+function psGoto(id, s) { psSel = { id, k: dkey(s) }; go('payslips'); }
+function renderPayslips() {
+  const ks = [...new Set([...Object.keys(PAY).map(k => k.slice(0, 10)), dkey(curStart())])].sort().reverse(), want = psSel ? psSel.k : $('#ps-per').value;
+  $('#ps-per').innerHTML = ks.map(k => `<option value="${k}">${fmR(new Date(k + 'T00:00'))}${k === dkey(curStart()) ? ' (current)' : ''}</option>`).join('');
+  $('#ps-per').value = ks.includes(want) ? want : (ks.find(k => payRows(new Date(k + 'T00:00'), true).length) || ks[0]); // default: latest period with records
+  const k = $('#ps-per').value, s = new Date(k + 'T00:00'), all = payRows(s, k !== dkey(curStart()));
+  const q = $('#ps-q').value.trim().toLowerCase(), rows = all.filter(r => !q || `${r.id} ${r.e.name}`.toLowerCase().includes(q));
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); psPage = Math.min(psPage, pages);
+  const at = (psPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
+  $('#ps-rows').innerHTML = part.length ? part.map(({ id, e, st }) => { const can = st === 'approved' || st === 'processed';
+    return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
+    <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
+    <td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3"><span class="badge ${PS_ST[st][0]}">${PS_ST[st][1]}</span></td>
+    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-psv="${id}" ${can ? '' : 'disabled title="Available once payroll is approved"'}>${psSel && psSel.id === id && psSel.k === k ? 'Viewing' : 'View'}</button> <button class="ghost !py-1 !px-2 text-xs" data-psd="${id}" ${st === 'processed' ? '' : 'disabled title="Available once payroll is processed"'}>Download</button></td></tr>`; }).join('')
+    : '<tr class="border-t hair"><td colspan="5" class="py-8 text-center muted">No payslips match your filters.</td></tr>';
+  $('#ps-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
+  $('#ps-pager').innerHTML = dpager(psPage, pages);
+  const sel = psSel && psSel.k === k && all.find(r => r.id === psSel.id && (r.st === 'approved' || r.st === 'processed'));
+  if (!sel) psSel = null;
+  $('#ps-panel').classList.toggle('hidden', !sel); $('#ps-wrap').classList.toggle('open', !!sel);
+  if (sel) { $('#ps-doc').innerHTML = psHtml(sel.id, s, sel.st); $('#ps-print').disabled = $('#ps-dl').disabled = sel.st !== 'processed'; }
+}
+function printSlip(id, s) { $('#card-sheet').innerHTML = psHtml(id, s, 'processed'); window.print(); }
+$('#ps-per').addEventListener('input', () => { psSel = null; psPage = 1; renderPayslips(); });
+$('#ps-q').addEventListener('input', () => { psPage = 1; renderPayslips(); });
+$('#ps-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { psPage = +b.dataset.p; renderPayslips(); } });
+$('#ps-rows').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return; const k = $('#ps-per').value;
+  if (b.dataset.psv) { psSel = { id: b.dataset.psv, k }; renderPayslips(); if (innerWidth < 1280) $('#ps-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  else if (b.dataset.psd) { printSlip(b.dataset.psd, new Date(k + 'T00:00')); toast('In the print dialog, choose “Save as PDF”.'); }
+});
+$('#ps-close').addEventListener('click', () => { psSel = null; renderPayslips(); });
+$('#ps-print').addEventListener('click', () => { if (psSel) printSlip(psSel.id, new Date(psSel.k + 'T00:00')); });
+$('#ps-dl').addEventListener('click', () => { if (psSel) { printSlip(psSel.id, new Date(psSel.k + 'T00:00')); toast('In the print dialog, choose “Save as PDF”.'); } });
 
 /* ---------- Sidebar (hamburger) ---------- */
 const side = $('#sidebar'), overlay = $('#overlay'), isDesk = () => matchMedia('(min-width:1024px)').matches;
@@ -912,10 +1043,10 @@ overlay.addEventListener('click', () => { collapsed = true; applySide(); });
 addEventListener('resize', () => { collapsed = !isDesk(); applySide(); });
 
 /* ---------- Router ---------- */
-const SHELL = ['dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll'];
+const SHELL = ['dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips'];
 function route() {
   let v = location.hash.slice(2) || (sess ? 'home' : 'login');
-  if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'qr'].includes(v)) v = sess ? 'home' : 'login';
+  if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips', 'qr'].includes(v)) v = sess ? 'home' : 'login';
   if (v !== 'login' && v !== 'register' && !sess) v = 'login'; // everything sits behind login
   if ((v === 'login' || v === 'register') && sess) v = 'home';
   if (v === 'verify' && !pending) v = 'scan';
@@ -937,8 +1068,10 @@ function route() {
     $('#page-attendance').classList.toggle('hidden', v !== 'attendance');
     $('#page-deductions').classList.toggle('hidden', v !== 'deductions');
     $('#page-payroll').classList.toggle('hidden', v !== 'payroll');
+    $('#page-reports').classList.toggle('hidden', v !== 'reports');
+    $('#page-payslips').classList.toggle('hidden', v !== 'payslips');
     $$('.nav a').forEach(a => a.classList.toggle('active', a.dataset.page === v));
-    if (v === 'dashboard') renderDash(); else if (v === 'employees') renderEmployees(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else renderAttendance();
+    if (v === 'dashboard') renderDash(); else if (v === 'employees') renderEmployees(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips(); else renderAttendance();
     collapsed = !isDesk(); applySide();
   }
 }
