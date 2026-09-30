@@ -182,7 +182,10 @@ function handleCode(code) {
   if (code === lastScan.c && now - lastScan.t < 3000) return; // ignore repeat reads
   lastScan = { c: code, t: now };
   if (!EMP[code]) { toast('Unrecognized employee ID.', 'err'); return; }
+  if (EMP[code].draft) { toast(EMP[code].name + '’s setup isn’t complete yet. Ask your manager.', 'err'); return; }
   if (!EMP[code].active) { toast(EMP[code].name + ' is inactive.', 'err'); return; }
+  const sc = getSched(code, new Date()); // no shift today (day off / leave): block time in, but still allow time out for someone already clocked in
+  if (sc.in == null && nextType(code) === 'in') { toast(`${EMP[code].name} isn’t scheduled today (${TYPE_LABEL[sc.t]}). Ask your manager to update the schedule.`, 'err'); return; }
   pending = code; go('verify');
 }
 $('#manual').addEventListener('submit', e => { e.preventDefault(); handleCode($('#mid').value.trim().toUpperCase()); $('#mid').value = ''; });
