@@ -15,11 +15,11 @@
 <!-- HOME: module choice (index) -->
 <section id="v-home" class="view">
 <div class="min-h-screen max-w-3xl mx-auto px-6 flex flex-col justify-center py-14">
-  <div class="text-xl font-semibold">InfusoPay</div>
+  <div class="flex items-center justify-between"><div class="text-xl font-semibold">InfusoPay</div><button id="home-out" class="ghost text-sm">Log out</button></div>
   <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight mt-8">Where would you like to go?</h1>
-  <p class="muted mt-3 max-w-md">Admins manage payroll. Employees record their attendance.</p>
+  <p id="home-hi" class="muted mt-3 max-w-md"></p>
   <div class="grid sm:grid-cols-2 gap-4 mt-10">
-    <a href="#/login" class="card choice p-6 flex flex-col">
+    <a href="#/dashboard" class="card choice p-6 flex flex-col">
       <h2 class="font-medium">Payroll management</h2>
       <p class="muted text-sm mt-2 flex-1">Employees, schedules, attendance records, payroll, reports and payslips.</p>
       <p class="text-sm mt-6">For admin only</p>
@@ -45,9 +45,8 @@
   </div>
   <div class="flex items-center justify-center p-6">
     <form id="login-form" class="w-full max-w-sm space-y-4" autocomplete="off">
-      <a href="#/" class="muted text-sm">← Back to home</a>
-      <h1 class="text-2xl font-semibold">Admin log in</h1>
-      <p class="muted text-sm -mt-2">Log in to manage payroll.</p>
+      <h1 class="text-2xl font-semibold">Log in</h1>
+      <p class="muted text-sm -mt-2">Log in to continue to payroll and attendance.</p>
       <div><label class="lbl" for="lu">Username</label><input id="lu" class="input" required></div>
       <div><label class="lbl" for="lp">Password</label>
         <div class="relative"><input id="lp" type="password" class="input pr-16" required>
@@ -58,7 +57,7 @@
       <p id="login-err" class="text-sm hidden" style="color:var(--err)">Incorrect username or password.</p>
       <button class="btn w-full" type="submit">Log in</button>
       <a href="#/register" class="ghost block text-center">Create an account</a>
-      <p class="muted text-xs text-center">Demo login: admin / admin123</p>
+      <p class="muted text-xs text-center">Demo login: admin / admin123 · Payroll PIN: 123456</p>
     </form>
   </div>
 </div>
@@ -78,10 +77,28 @@
       <div><label class="lbl" for="re">Email (optional)</label><input id="re" type="email" class="input"></div>
       <div><label class="lbl" for="rp">Password</label><input id="rp" type="password" class="input" placeholder="At least 6 characters"></div>
       <div><label class="lbl" for="rc">Confirm password</label><input id="rc" type="password" class="input"></div>
+      <div><label class="lbl" for="rpin">6-digit PIN</label><input id="rpin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input" placeholder="Used to open payroll"></div>
+      <div><label class="lbl" for="rpc">Confirm PIN</label><input id="rpc" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input"></div>
       <label class="sm:col-span-2 flex items-center gap-2 text-sm"><input id="rt" type="checkbox"> I agree to the terms and conditions</label>
       <p id="reg-err" class="sm:col-span-2 text-sm hidden" style="color:var(--err)"></p>
       <button class="btn sm:col-span-2" type="submit">Create account</button>
     </div>
+  </form>
+</div>
+</section>
+
+<!-- PAYROLL PIN -->
+<section id="v-pin" class="view">
+<div class="min-h-screen flex items-center justify-center p-6">
+  <form id="pin-form" class="w-full max-w-sm space-y-4" autocomplete="off">
+    <a href="#/home" class="muted text-sm">← Back to modules</a>
+    <h1 id="pin-title" class="text-2xl font-semibold">Enter your PIN</h1>
+    <p id="pin-sub" class="muted text-sm -mt-2"></p>
+    <div><label class="lbl" for="pin-in">PIN</label><input id="pin-in" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input text-center text-xl tracking-wide" placeholder="••••••"></div>
+    <div id="pin-w2" class="hidden"><label class="lbl" for="pin-in2">Confirm PIN</label><input id="pin-in2" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input text-center text-xl tracking-wide" placeholder="••••••"></div>
+    <p id="pin-err" class="text-sm hidden" style="color:var(--err)"></p>
+    <button class="btn w-full" type="submit" id="pin-btn">Unlock payroll</button>
+    <p class="muted text-xs text-center">Demo PIN: 123456</p>
   </form>
 </div>
 </section>
@@ -92,7 +109,7 @@
   <header class="flex items-center justify-between px-6 h-16 border-b hair" style="background:var(--surface)">
     <span class="font-semibold">InfusoPay</span>
     <div class="flex items-center gap-4"><div class="text-right text-sm leading-tight"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
-    <a href="#/" class="ghost text-sm">Back to home</a></div>
+    <a href="#/home" class="ghost text-sm">Back to home</a></div>
   </header>
   <main class="flex-1 w-full max-w-5xl mx-auto p-6 grid lg:grid-cols-[1fr_300px] gap-8 items-start">
     <div>
@@ -126,7 +143,7 @@
   <header class="flex items-center justify-between px-6 h-16 border-b hair" style="background:var(--surface)">
     <span class="font-semibold">InfusoPay</span>
     <div class="flex items-center gap-4"><div class="text-right text-sm leading-tight"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
-    <a href="#/" class="ghost text-sm">Back to home</a></div>
+    <a href="#/home" class="ghost text-sm">Back to home</a></div>
   </header>
   <main class="flex-1 w-full max-w-4xl mx-auto p-6">
     <div class="flex flex-wrap items-center justify-between gap-4">
@@ -170,6 +187,7 @@
     <nav class="nav mt-4 space-y-1 flex-1">
       <a href="#/dashboard" data-page="dashboard">Dashboard</a><a href="#/employees" data-page="employees">Employees</a><a href="#/schedules" data-page="schedules">Schedules</a><a href="#/attendance" data-page="attendance">Attendance</a><a href="#/deductions" data-page="deductions">Deductions</a><a href="#/payroll" data-page="payroll">Payroll</a><a href="#/dashboard" data-soon>Reports</a><a href="#/dashboard" data-soon>Payslips</a><a href="#/dashboard" data-soon>Settings</a>
     </nav>
+    <button id="switch" class="ghost text-sm mb-2">Switch module</button>
     <button id="reset" class="ghost text-sm mb-2">Reset demo data</button>
     <button id="logout" class="ghost text-sm">Log out</button>
   </aside>

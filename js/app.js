@@ -20,7 +20,7 @@ function defaultEmps() {
   });
   return o;
 }
-const SEED = { username: 'admin', password: 'admin123', business: 'InfusoPay Café', name: 'Maria Santos' };
+const SEED = { username: 'admin', password: 'admin123', pin: '123456', business: 'InfusoPay Café', name: 'Maria Santos' };
 
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -111,7 +111,7 @@ $('#login-form').addEventListener('submit', e => {
   if ($('#lu').value.trim().toLowerCase() === a.username.toLowerCase() && $('#lp').value === a.password) {
     store.set('remember', $('#rem').checked ? a.username : '');
     sess = a; $('#lp').value = ''; $('#login-err').classList.add('hidden');
-    go('dashboard');
+    go('home');
   } else $('#login-err').classList.remove('hidden');
 });
 
@@ -121,15 +121,42 @@ $('#reg-form').addEventListener('submit', e => {
   const bad = !g('#rb') || !g('#rn') || !g('#ru') ? 'Enter your business name, full name and username.'
     : $('#rp').value.length < 6 ? 'Use a password with at least 6 characters.'
     : $('#rp').value !== $('#rc').value ? 'Passwords don’t match.'
+    : !/^\d{6}$/.test($('#rpin').value) ? 'The PIN must be exactly 6 digits.'
+    : $('#rpin').value !== $('#rpc').value ? 'PINs don’t match.'
     : !$('#rt').checked ? 'Accept the terms to continue.' : '';
   if (bad) { err.textContent = bad; err.classList.remove('hidden'); return; }
   err.classList.add('hidden');
-  sess = { username: g('#ru'), password: $('#rp').value, business: g('#rb'), name: g('#rn'), email: g('#re') };
+  sess = { username: g('#ru'), password: $('#rp').value, business: g('#rb'), name: g('#rn'), email: g('#re'), pin: $('#rpin').value };
   store.set('acct', sess); e.target.reset();
-  toast('Account created.'); go('dashboard');
+  toast('Account created.'); go('home');
 });
 
-$('#logout').addEventListener('click', () => { sess = null; go('home'); });
+/* ---------- Payroll PIN: opens the payroll module; locks again when you leave it ---------- */
+let unlocked = false, pinTarget = 'dashboard', pinFails = 0, pinLock = 0;
+$$('#rpin, #rpc, #pin-in, #pin-in2').forEach(i => i.addEventListener('input', () => { i.value = i.value.replace(/\D/g, '').slice(0, 6); }));
+function paintPin() {
+  const setup = !sess.pin; // accounts created before PINs existed set one on first use
+  $('#pin-title').textContent = setup ? 'Set your payroll PIN' : 'Enter your PIN';
+  $('#pin-sub').textContent = setup ? 'Create a 6-digit PIN. You’ll use it to open payroll.' : 'Enter your 6-digit PIN to open payroll.';
+  $('#pin-w2').classList.toggle('hidden', !setup); $('#pin-btn').textContent = setup ? 'Save PIN and continue' : 'Unlock payroll';
+  $('#pin-in').value = ''; $('#pin-in2').value = ''; $('#pin-err').classList.add('hidden'); $('#pin-in').focus();
+}
+$('#pin-form').addEventListener('submit', e => {
+  e.preventDefault(); const v = $('#pin-in').value, fail = m => { $('#pin-err').textContent = m; $('#pin-err').classList.remove('hidden'); };
+  if (!sess.pin) {
+    if (!/^\d{6}$/.test(v)) return fail('The PIN must be exactly 6 digits.');
+    if (v !== $('#pin-in2').value) return fail('PINs don’t match.');
+    sess.pin = v; store.set('acct', sess);
+  } else {
+    if (Date.now() < pinLock) return fail(`Too many attempts. Try again in ${Math.ceil((pinLock - Date.now()) / 1000)} seconds.`);
+    if (v !== sess.pin) { $('#pin-in').value = ''; if (++pinFails >= 5) { pinFails = 0; pinLock = Date.now() + 30000; return fail('Too many attempts. Try again in 30 seconds.'); } return fail('Incorrect PIN.'); }
+  }
+  pinFails = 0; unlocked = true; go(pinTarget);
+});
+
+$('#logout').addEventListener('click', () => { sess = null; go('login'); });
+$('#home-out').addEventListener('click', () => { sess = null; go('login'); });
+$('#switch').addEventListener('click', () => go('home'));
 
 /* ---------- Camera ---------- */
 function stopCam() {
@@ -887,11 +914,13 @@ addEventListener('resize', () => { collapsed = !isDesk(); applySide(); });
 /* ---------- Router ---------- */
 const SHELL = ['dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll'];
 function route() {
-  let v = location.hash.slice(2) || 'home';
-  if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'qr'].includes(v)) v = 'home';
-  if (SHELL.includes(v) && !sess) v = 'login';
-  if ((v === 'login' || v === 'register') && sess) v = 'dashboard';
+  let v = location.hash.slice(2) || (sess ? 'home' : 'login');
+  if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'qr'].includes(v)) v = sess ? 'home' : 'login';
+  if (v !== 'login' && v !== 'register' && !sess) v = 'login'; // everything sits behind login
+  if ((v === 'login' || v === 'register') && sess) v = 'home';
   if (v === 'verify' && !pending) v = 'scan';
+  if (!SHELL.includes(v)) unlocked = false; // leaving payroll locks it again
+  if (SHELL.includes(v) && !unlocked) { pinTarget = v; v = 'pin'; }
   $$('.view').forEach(x => x.classList.remove('on'));
   const shell = SHELL.includes(v); // both pages share the sidebar layout
   $('#v-' + (shell ? 'dashboard' : v)).classList.add('on');
@@ -899,6 +928,8 @@ function route() {
   if (v === 'scan') startScan();
   if (v === 'verify') startVerify();
   if (v === 'qr') renderQR();
+  if (v === 'pin') paintPin();
+  if (v === 'home') $('#home-hi').textContent = `Signed in as ${sess.name}. Choose a module to continue.`;
   if (shell) {
     $('#page-dashboard').classList.toggle('hidden', v !== 'dashboard');
     $('#page-employees').classList.toggle('hidden', v !== 'employees');
