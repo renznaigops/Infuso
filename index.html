@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>InfusoPay – Payroll &amp; Attendance Prototype</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<link rel="stylesheet" href="css/tailwind.css">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- HOME: module choice (index) -->
+<section id="v-home" class="view">
+<div class="min-h-screen max-w-3xl mx-auto px-6 flex flex-col justify-center py-14">
+  <div class="text-xl font-semibold">InfusoPay</div>
+  <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight mt-8">Where would you like to go?</h1>
+  <p class="muted mt-3 max-w-md">Admins manage payroll. Employees record their attendance.</p>
+  <div class="grid sm:grid-cols-2 gap-4 mt-10">
+    <a href="#/login" class="card choice p-6 flex flex-col">
+      <h2 class="font-medium">Payroll management</h2>
+      <p class="muted text-sm mt-2 flex-1">Employees, schedules, attendance records, payroll, reports and payslips.</p>
+      <p class="text-sm mt-6">For admin only</p>
+    </a>
+    <a href="#/scan" class="card choice p-6 flex flex-col">
+      <h2 class="font-medium">Attendance monitoring</h2>
+      <p class="muted text-sm mt-2 flex-1">Scan your QR code to record your time in or out.</p>
+      <p class="text-sm mt-6">For employees</p>
+    </a>
+  </div>
+  <p class="muted text-xs mt-12">Demonstration prototype, not a working system.</p>
+</div>
+</section>
+
+<!-- LOGIN (admin) -->
+<section id="v-login" class="view">
+<div class="grid lg:grid-cols-2 min-h-screen">
+  <div class="hidden lg:flex flex-col justify-between p-12 border-r hair" style="background:var(--surface)">
+    <div class="text-xl font-semibold">InfusoPay</div>
+    <div><h2 class="text-3xl font-semibold leading-tight max-w-sm">Simple payroll for a growing café.</h2>
+    <p class="muted mt-3 max-w-xs">Attendance, schedules and payslips in one calm place.</p></div>
+    <p class="muted text-xs">Demonstration prototype, not a working system.</p>
+  </div>
+  <div class="flex items-center justify-center p-6">
+    <form id="login-form" class="w-full max-w-sm space-y-4" autocomplete="off">
+      <a href="#/" class="muted text-sm">← Back to home</a>
+      <h1 class="text-2xl font-semibold">Admin log in</h1>
+      <p class="muted text-sm -mt-2">Log in to manage payroll.</p>
+      <div><label class="lbl" for="lu">Username</label><input id="lu" class="input" required></div>
+      <div><label class="lbl" for="lp">Password</label>
+        <div class="relative"><input id="lp" type="password" class="input pr-16" required>
+        <button type="button" data-eye="lp" class="absolute right-3 top-1/2 -translate-y-1/2 text-sm muted">Show</button></div></div>
+      <div class="flex items-center justify-between text-sm">
+        <label class="flex items-center gap-2"><input id="rem" type="checkbox"> Remember me</label>
+        <button type="button" id="forgot" class="muted">Forgot password?</button></div>
+      <p id="login-err" class="text-sm hidden" style="color:var(--err)">Incorrect username or password.</p>
+      <button class="btn w-full" type="submit">Log in</button>
+      <a href="#/register" class="ghost block text-center">Create an account</a>
+      <p class="muted text-xs text-center">Demo login: admin / admin123</p>
+    </form>
+  </div>
+</div>
+</section>
+
+<!-- REGISTER -->
+<section id="v-register" class="view">
+<div class="min-h-screen flex items-center justify-center p-6">
+  <form id="reg-form" class="w-full max-w-2xl" autocomplete="off">
+    <a href="#/login" class="muted text-sm">← Back to log in</a>
+    <h1 class="text-2xl font-semibold mt-4">Create your account</h1>
+    <p class="muted text-sm mt-1">Set up InfusoPay for your café.</p>
+    <div class="card p-6 mt-6 grid sm:grid-cols-2 gap-4">
+      <div><label class="lbl" for="rb">Business name</label><input id="rb" class="input" placeholder="e.g. Brew &amp; Co. Café"></div>
+      <div><label class="lbl" for="rn">Full name</label><input id="rn" class="input" placeholder="e.g. Maria Santos"></div>
+      <div><label class="lbl" for="ru">Username</label><input id="ru" class="input"></div>
+      <div><label class="lbl" for="re">Email (optional)</label><input id="re" type="email" class="input"></div>
+      <div><label class="lbl" for="rp">Password</label><input id="rp" type="password" class="input" placeholder="At least 6 characters"></div>
+      <div><label class="lbl" for="rc">Confirm password</label><input id="rc" type="password" class="input"></div>
+      <label class="sm:col-span-2 flex items-center gap-2 text-sm"><input id="rt" type="checkbox"> I agree to the terms and conditions</label>
+      <p id="reg-err" class="sm:col-span-2 text-sm hidden" style="color:var(--err)"></p>
+      <button class="btn sm:col-span-2" type="submit">Create account</button>
+    </div>
+  </form>
+</div>
+</section>
+
+<!-- SCAN -->
+<section id="v-scan" class="view">
+<div class="min-h-screen flex flex-col">
+  <header class="flex items-center justify-between px-6 h-16 border-b hair" style="background:var(--surface)">
+    <span class="font-semibold">InfusoPay</span>
+    <div class="flex items-center gap-4"><div class="text-right text-sm leading-tight"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
+    <a href="#/" class="ghost text-sm">Back to home</a></div>
+  </header>
+  <main class="flex-1 w-full max-w-5xl mx-auto p-6 grid lg:grid-cols-[1fr_300px] gap-8 items-start">
+    <div>
+      <h1 class="text-2xl font-semibold">Scan your QR code</h1>
+      <p class="muted text-sm mt-1">Position your employee ID inside the frame.</p>
+      <div class="card mt-5 overflow-hidden relative aspect-[4/3] grid place-items-center">
+        <video id="qv" playsinline muted class="w-full h-full object-cover hidden"></video>
+        <div id="qframe" class="hidden absolute inset-[18%] rounded-2xl border-2 pointer-events-none" style="border-color:var(--accent);opacity:.75"></div>
+        <div id="qmsg" class="p-6 text-center muted text-sm">Requesting camera access…</div>
+      </div>
+      <button id="retry" class="btn mt-3 hidden">Allow camera</button>
+      <div class="flex items-center gap-3 my-5 muted text-sm"><span class="flex-1 h-px" style="background:var(--line)"></span>or<span class="flex-1 h-px" style="background:var(--line)"></span></div>
+      <form id="manual" class="flex gap-2"><input id="mid" class="input" placeholder="Enter employee ID, e.g. EMP-001" aria-label="Employee ID"><button class="ghost shrink-0">Continue</button></form>
+      <p class="muted text-xs mt-4">Demo IDs run from EMP-001 to EMP-015. <a href="#/qr" class="underline">Show demo QR codes</a> to test the camera.</p>
+    </div>
+    <aside class="card p-5">
+      <h2 class="font-medium">How it works</h2>
+      <ol class="mt-4 space-y-4 text-sm">
+        <li><div class="font-medium">Scan your QR code</div><div class="muted">Hold it inside the frame.</div></li>
+        <li><div class="font-medium">Verify your face</div><div class="muted">Look at the camera.</div></li>
+        <li><div class="font-medium">Confirm</div><div class="muted">Your time in or out is recorded.</div></li>
+      </ol>
+    </aside>
+  </main>
+</div>
+</section>
+
+<!-- VERIFY -->
+<section id="v-verify" class="view">
+<div class="min-h-screen flex flex-col">
+  <header class="flex items-center justify-between px-6 h-16 border-b hair" style="background:var(--surface)">
+    <span class="font-semibold">InfusoPay</span>
+    <div class="flex items-center gap-4"><div class="text-right text-sm leading-tight"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
+    <a href="#/" class="ghost text-sm">Back to home</a></div>
+  </header>
+  <main class="flex-1 w-full max-w-4xl mx-auto p-6">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div><h1 class="text-2xl font-semibold" id="vt">Verify your identity</h1><p class="muted text-sm mt-1" id="vs"></p></div>
+      <div class="flex items-center gap-2 text-sm muted"><span class="step on">✓</span>Scan<span class="w-6 h-px" style="background:var(--line)"></span><span class="step on" id="s2">2</span>Face<span class="w-6 h-px" style="background:var(--line)"></span><span class="step" id="s3">3</span>Confirm</div>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5 mt-6">
+      <div class="card p-6">
+        <div class="flex items-center gap-4"><div id="av" class="w-16 h-16 rounded-full grid place-items-center text-lg font-medium" style="background:var(--bg)"></div>
+        <div><div class="font-medium" id="en"></div><div class="muted text-sm" id="ei"></div></div></div>
+        <dl class="mt-5 space-y-3 text-sm"><div class="flex justify-between"><dt class="muted">Position</dt><dd id="ep"></dd></div><div class="flex justify-between"><dt class="muted">Schedule</dt><dd id="es"></dd></div></dl>
+      </div>
+      <div class="card overflow-hidden relative aspect-[4/3] grid place-items-center">
+        <video id="fv" playsinline muted class="w-full h-full object-cover hidden"></video>
+        <div id="fframe" class="hidden absolute inset-[22%] rounded-[40%] border-2 pointer-events-none" style="border-color:var(--accent);opacity:.75"></div>
+        <div id="fmsg" class="p-6 text-center muted text-sm">Starting camera…</div>
+      </div>
+    </div>
+    <div class="flex justify-between gap-3 mt-6"><a href="#/scan" class="ghost">Scan again</a><button id="vbtn" class="btn px-6">Verify identity</button></div>
+    <p class="muted text-xs mt-4">Prototype note: face verification is simulated. No face data is captured or matched.</p>
+  </main>
+</div>
+</section>
+
+<!-- DEMO QR CODES -->
+<section id="v-qr" class="view">
+<div class="min-h-screen max-w-5xl mx-auto p-6">
+  <a href="#/scan" class="muted text-sm">← Back to scanner</a>
+  <h1 class="text-2xl font-semibold mt-4">Demo employee QR codes</h1>
+  <p class="muted text-sm mt-1">Show one to the scanner from another screen, or print this page. Each code holds the employee ID.</p>
+  <div id="qr-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6"></div>
+</div>
+</section>
+
+<!-- DASHBOARD -->
+<section id="v-dashboard" class="view h-full">
+<div class="flex h-full overflow-hidden relative">
+  <div id="overlay" class="fixed inset-0 bg-black/30 z-30 hidden"></div>
+  <aside id="sidebar" class="fixed lg:static z-40 inset-y-0 left-0 w-60 shrink-0 border-r hair flex flex-col p-4" style="background:var(--surface);padding-top:calc(1rem + env(safe-area-inset-top,0px))">
+    <div class="px-2 py-2 font-semibold">InfusoPay</div>
+    <nav class="nav mt-4 space-y-1 flex-1">
+      <a href="#/dashboard" data-page="dashboard">Dashboard</a><a href="#/employees" data-page="employees">Employees</a><a href="#/schedules" data-page="schedules">Schedules</a><a href="#/attendance" data-page="attendance">Attendance</a><a href="#/deductions" data-page="deductions">Deductions</a><a href="#/payroll" data-page="payroll">Payroll</a><a href="#/dashboard" data-soon>Reports</a><a href="#/dashboard" data-soon>Payslips</a><a href="#/dashboard" data-soon>Settings</a>
+    </nav>
+    <button id="reset" class="ghost text-sm mb-2">Reset demo data</button>
+    <button id="logout" class="ghost text-sm">Log out</button>
+  </aside>
+  <div class="flex-1 min-w-0 flex flex-col">
+    <header class="h-16 shrink-0 flex items-center gap-3 px-4 border-b hair" style="background:var(--surface)">
+      <button id="burger" class="ghost !px-3" aria-label="Toggle navigation">☰</button>
+      <div class="leading-tight min-w-0 truncate"><div class="font-medium truncate" id="d-biz"></div><div class="muted text-xs">Bulacan</div></div>
+      <div class="ml-auto flex items-center gap-4"><div class="text-right text-sm leading-tight hidden sm:block"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
+        <button class="ghost !px-3" aria-label="Notifications" id="bell">🔔</button>
+        <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-medium" style="background:var(--bg)" id="d-av"></div></div>
+    </header>
+    <main id="page-dashboard" class="flex-1 overflow-auto p-4 sm:p-6">
+      <h1 class="text-xl font-semibold" id="d-hi"></h1>
+      <p class="muted text-sm mt-1">Here’s today’s overview.</p>
+      <div id="stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5"></div>
+      <div class="grid lg:grid-cols-3 gap-4 mt-4">
+        <div class="card p-5 lg:col-span-2 min-w-0"><h2 class="font-medium">Today’s attendance</h2>
+          <div class="overflow-auto max-h-72 mt-3"><table class="w-full text-sm"><thead class="muted text-left"><tr><th class="py-2 font-normal">ID</th><th class="font-normal">Name</th><th class="font-normal">Time in</th><th class="font-normal">Status</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+        <div class="card p-5 min-w-0"><h2 class="font-medium">Attendance overview</h2><p class="muted text-xs mt-1">Last 7 days</p><div id="chart" class="mt-3"></div><div class="flex flex-wrap gap-4 text-xs muted mt-2"><span><i style="color:var(--ok)">●</i> On time</span><span><i style="color:var(--warn)">●</i> Late</span><span><i style="color:var(--err)">●</i> Absent</span></div></div>
+      </div>
+      <div class="grid md:grid-cols-3 gap-4 mt-4">
+        <div class="card p-5"><h2 class="font-medium">Payroll status</h2><p class="text-2xl font-semibold mt-2">2</p><p class="muted text-sm">payrolls waiting for approval</p></div>
+        <div class="card p-5"><h2 class="font-medium">Upcoming schedules</h2><p class="text-2xl font-semibold mt-2">12</p><p class="muted text-sm">employees scheduled tomorrow</p></div>
+        <div class="card p-5"><h2 class="font-medium">Notifications</h2><p class="text-2xl font-semibold mt-2">3</p><p class="muted text-sm">new notifications</p></div>
+      </div>
+    </main>
+
+    <!-- EMPLOYEES PAGE -->
+    <main id="page-employees" class="hidden flex-1 overflow-auto p-4 sm:p-6">
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Employees</span></nav>
+      <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
+        <div><h1 class="text-2xl font-semibold">Employees</h1><p class="muted text-sm mt-1">Manage employee records, positions and employment details.</p></div>
+        <div class="flex flex-wrap gap-2"><button id="print-cards" class="ghost">Print selected ID cards</button><button id="add-emp" class="btn">+ Add employee</button></div>
+      </div>
+      <div id="emp-stats" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5"></div>
+      <div class="card p-4 mt-4">
+        <div class="grid md:grid-cols-[1fr_200px_200px] gap-3">
+          <input id="e-q" class="input" placeholder="Search by ID, name or position" aria-label="Search employees">
+          <select id="e-pos" class="input" aria-label="Filter by position"></select>
+          <select id="e-st" class="input" aria-label="Filter by status"><option value="">All status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
+        </div>
+        <div class="overflow-auto max-h-[28rem] mt-4">
+          <table class="w-full text-sm min-w-[760px]">
+            <thead class="muted text-left"><tr><th class="py-2 pr-3 font-normal w-8"><input type="checkbox" id="e-all" aria-label="Select all"></th><th class="py-2 font-normal w-10">#</th><th class="font-normal">Employee ID</th><th class="font-normal">Name</th><th class="font-normal">Position</th><th class="font-normal">Contact number</th><th class="font-normal">Date hired</th><th class="font-normal">Status</th><th class="font-normal">Actions</th></tr></thead>
+            <tbody id="emp-rows"></tbody>
+          </table>
+        </div>
+        <p id="emp-count" class="muted text-xs mt-3"></p>
+      </div>
+    </main>
+    <!-- SCHEDULES PAGE -->
+    <main id="page-schedules" class="hidden flex-1 overflow-auto p-4 sm:p-6">
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Schedules</span></nav>
+      <div class="mt-3"><h1 class="text-2xl font-semibold">Schedule</h1><p class="muted text-sm mt-1">Set each employee’s shifts once. Attendance and payroll use them automatically.</p></div>
+      <div class="card p-4 mt-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <button id="s-prev" class="ghost !px-3" aria-label="Previous week">‹</button>
+          <div class="font-medium min-w-[11rem] text-center" id="s-range"></div>
+          <button id="s-next" class="ghost !px-3" aria-label="Next week">›</button>
+          <button id="s-today" class="ghost text-sm">This week</button>
+          <div class="flex-1"></div>
+          <input id="s-q" class="input w-full sm:!w-48" placeholder="Search employee" aria-label="Search employee">
+          <select id="s-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
+        </div>
+        <div class="flex flex-wrap gap-4 text-xs muted mt-4">
+          <span><i style="color:var(--warn)">●</i> Morning 8–5</span><span><i style="color:var(--accent)">●</i> Afternoon 10–7</span><span><i style="color:var(--night)">●</i> Night 3–12</span><span><i style="color:var(--ok)">●</i> On leave</span><span><i>●</i> Day off</span>
+        </div>
+        <div class="overflow-auto max-h-[32rem] mt-3">
+          <table class="w-full text-sm min-w-[900px]" style="border-collapse:separate;border-spacing:6px">
+            <thead id="s-head"></thead><tbody id="s-rows"></tbody>
+          </table>
+        </div>
+        <p class="muted text-xs mt-2">Click a shift to edit it. Employees without a shift entry follow their default shift and one weekly day off.</p>
+      </div>
+    </main>
+    <!-- ATTENDANCE PAGE -->
+    <main id="page-attendance" class="hidden flex-1 overflow-auto p-4 sm:p-6">
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Attendance</span></nav>
+      <div class="mt-3"><h1 class="text-2xl font-semibold">Attendance Records</h1><p class="muted text-sm mt-1">View employee attendance records.</p></div>
+      <div class="card p-4 mt-5">
+        <div class="flex flex-wrap items-center gap-2">
+          <div id="a-modes" class="flex gap-2"><button type="button" data-mode="today">Today</button><button type="button" data-mode="week">This Week</button><button type="button" data-mode="month">This Month</button></div>
+          <input id="a-date" type="date" class="input w-full sm:!w-auto" aria-label="Pick a date">
+          <select id="a-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
+          <select id="a-st" class="input w-full sm:!w-36" aria-label="Filter by status"><option value="">All Status</option><option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option><option value="upcoming">Upcoming</option><option value="off">Day off</option><option value="leave">On leave</option></select>
+          <input id="a-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search attendance">
+        </div>
+        <p id="a-label" class="muted text-sm mt-4"></p>
+        <div class="overflow-auto mt-2">
+          <table class="w-full text-sm min-w-[820px]">
+            <thead class="muted text-left text-xs uppercase tracking-wide"><tr id="a-head"></tr></thead>
+            <tbody id="a-rows"></tbody>
+          </table>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="a-count" class="muted text-sm"></p><div id="a-pager" class="flex gap-2"></div></div>
+      </div>
+    </main>
+    <!-- DEDUCTIONS PAGE -->
+    <main id="page-deductions" class="hidden flex-1 overflow-auto p-4 sm:p-6">
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Deductions</span></nav>
+      <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
+        <div><h1 class="text-2xl font-semibold">Deductions</h1><p class="muted text-sm mt-1">Manage employee deductions and applicable payroll adjustments.</p></div>
+        <button id="add-ded" class="btn">+ Add deduction</button>
+      </div>
+      <div id="d-stats" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5"></div>
+      <div class="card p-4 mt-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="d-per" class="input w-full sm:!w-auto" aria-label="Period"><option value="month">This month</option><option value="last">Last month</option><option value="week">This week</option><option value="today">Today</option><option value="custom">Custom range</option></select>
+          <input id="d-from" type="date" class="input w-full sm:!w-auto hidden" aria-label="From date"><input id="d-to" type="date" class="input w-full sm:!w-auto hidden" aria-label="To date">
+          <select id="d-emp" class="input w-full sm:!w-52" aria-label="Filter by employee"></select>
+          <select id="d-type" class="input w-full sm:!w-48" aria-label="Filter by deduction type"></select>
+          <input id="d-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search deductions">
+        </div>
+        <p id="d-label" class="muted text-sm mt-4"></p>
+        <div class="overflow-auto mt-2">
+          <table class="w-full text-sm min-w-[980px]">
+            <thead class="muted text-left text-xs uppercase tracking-wide"><tr>
+              <th class="py-2 font-normal pr-3">Date</th><th class="font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Deduction type</th><th class="font-normal pr-3">Amount (₱)</th><th class="font-normal pr-3">Remarks / reason</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+            <tbody id="d-rows"></tbody>
+          </table>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="d-count" class="muted text-sm"></p><div id="d-pager" class="flex gap-2"></div></div>
+        <p id="d-note" class="muted text-xs mt-4"></p>
+      </div>
+    </main>
+    <!-- PAYROLL PAGE -->
+    <main id="page-payroll" class="hidden flex-1 overflow-auto p-4 sm:p-6">
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Payroll</span></nav>
+      <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
+        <div><h1 class="text-2xl font-semibold">Payroll</h1><p class="muted text-sm mt-1">Generate and manage employee payroll from finalized attendance.</p></div>
+        <div class="flex flex-wrap gap-2"><button id="p-adv" class="ghost">Advance selected</button><button id="p-gen" class="btn">Process Payroll</button></div>
+      </div>
+      <div class="card p-4 mt-5">
+        <div id="p-tabs" class="flex gap-2"><button type="button" data-tab="current">Current payroll</button><button type="button" data-tab="history">History</button></div>
+        <div id="p-cur">
+          <p id="p-label" class="font-medium mt-4"></p><p id="p-info" class="muted text-xs mt-1"></p>
+          <div class="flex flex-wrap items-center gap-2 mt-4">
+            <select id="p-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
+            <select id="p-st" class="input w-full sm:!w-44" aria-label="Filter by status"><option value="">All Status</option><option value="none">Not generated</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option></select>
+            <input id="p-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search payroll">
+          </div>
+          <div class="overflow-auto mt-3">
+            <table class="w-full text-sm min-w-[980px]">
+              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 w-8"><input type="checkbox" id="p-all" aria-label="Select all"></th><th class="font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Basic rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <tbody id="p-rows"></tbody>
+            </table>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="p-count" class="muted text-sm"></p><div id="p-pager" class="flex gap-2"></div></div>
+          <div id="p-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4"></div>
+          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. A period becomes payable once it has ended. Absent days are unpaid, regular pay is the scheduled hours on days worked, overtime is paid at 1.25×, and Tardiness, Undertime and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed, and processed payroll is locked.</p>
+        </div>
+        <div id="p-his" class="hidden">
+          <p class="muted text-sm mt-4">Closed pay periods. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
+          <div class="overflow-auto mt-2"><table class="w-full text-sm min-w-[760px]">
+            <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Pay period</th><th class="font-normal pr-3">Employees</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+            <tbody id="h-rows"></tbody></table></div>
+          <div id="h-detail" class="hidden mt-6">
+            <div class="flex flex-wrap items-center justify-between gap-2"><h2 id="hd-title" class="font-medium"></h2><button type="button" id="hd-back" class="ghost text-sm">Close records</button></div>
+            <div class="overflow-auto mt-2"><table class="w-full text-sm min-w-[900px]">
+              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Basic rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <tbody id="hd-rows"></tbody></table></div>
+            <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="hd-count" class="muted text-sm"></p><div id="hd-pager" class="flex gap-2"></div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</section>
+
+<!-- ADD / EDIT EMPLOYEE -->
+<div id="emp-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="emp-form" class="card w-full max-w-3xl max-h-full overflow-auto p-6" autocomplete="off" novalidate>
+    <div class="flex items-start justify-between gap-3">
+      <div><h2 id="emp-title" class="text-xl font-semibold"></h2><p id="emp-sub" class="muted text-sm mt-1"></p></div>
+      <button type="button" id="f-x" class="ghost !px-3" aria-label="Close">✕</button>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 text-sm muted mt-5">
+      <span class="step on" data-dot="1">1</span><span data-lbl="1">Employee Information</span><span class="w-6 h-px" style="background:var(--line)"></span>
+      <span class="step" data-dot="2">2</span><span data-lbl="2">Face Registration</span><span class="w-6 h-px" style="background:var(--line)"></span>
+      <span class="step" data-dot="3">3</span><span data-lbl="3">Review &amp; Generate ID</span>
+    </div>
+    <section data-step="1" class="grid md:grid-cols-[1fr_240px] gap-6 mt-6">
+      <div class="space-y-4">
+        <h3 class="font-medium">Employee Information</h3>
+        <div><label class="lbl">Employee ID</label>
+          <div class="flex items-center gap-2"><input id="f-id" class="input" readonly style="opacity:.7"><span class="muted text-xs shrink-0">(Auto-generated)</span></div></div>
+        <div><label class="lbl" for="f-name">Full name *</label><input id="f-name" class="input"></div>
+        <div><label class="lbl" for="f-pos">Position *</label><select id="f-pos" class="input"></select></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label class="lbl" for="f-rate">Rate per hour *</label>
+            <div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input id="f-rate" type="number" min="0" step="0.01" class="input pl-8" placeholder="80.00"></div></div>
+          <div><label class="lbl" for="f-hired">Date hired *</label><input id="f-hired" type="date" class="input"></div>
+        </div>
+      </div>
+      <div>
+        <h3 class="font-medium">Employee Photo</h3>
+        <div id="p-prev" class="mt-3 aspect-square rounded-xl grid place-items-center overflow-hidden muted text-sm" style="background:var(--bg)"></div>
+        <input id="f-file" type="file" accept="image/png,image/jpeg" class="hidden">
+        <button type="button" id="p-up" class="btn w-full mt-3">Upload Photo</button>
+        <button type="button" id="p-rm" class="ghost w-full mt-2">Remove Photo</button>
+        <p class="muted text-xs mt-2">JPG, PNG only. Max size: 2MB.</p>
+      </div>
+    </section>
+    <section data-step="2" class="hidden mt-6">
+      <h3 class="font-medium">Face Registration</h3>
+      <p class="muted text-sm mt-1">Center the employee’s face in the frame, then capture. Registration is simulated in this prototype.</p>
+      <div class="card overflow-hidden relative aspect-[4/3] max-w-md mt-4 grid place-items-center">
+        <video id="rv" playsinline muted class="w-full h-full object-cover hidden"></video>
+        <div id="rframe" class="hidden absolute inset-[22%] rounded-[40%] border-2 pointer-events-none" style="border-color:var(--accent);opacity:.75"></div>
+        <div id="rmsg" class="p-6 text-center muted text-sm">Starting camera…</div>
+      </div>
+      <div class="flex items-center gap-3 mt-4"><button type="button" id="f-snap" class="btn">Capture face</button><span id="f-face" class="text-sm muted">Not registered yet</span></div>
+    </section>
+    <section data-step="3" class="hidden mt-6">
+      <h3 class="font-medium">Review &amp; Generate ID</h3>
+      <div class="grid md:grid-cols-[1fr_180px] gap-6 mt-4">
+        <div>
+          <dl id="f-sum" class="space-y-2 text-sm"></dl>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+            <div><label class="lbl" for="f-shift">Default shift</label><select id="f-shift" class="input"></select></div>
+            <div><label class="lbl" for="f-contact">Contact number (optional)</label><input id="f-contact" class="input" inputmode="tel" placeholder="0917 123 4567"></div>
+          </div>
+        </div>
+        <div class="text-center"><div id="f-qr" class="max-w-[9rem] mx-auto"></div><div id="f-idbig" class="font-medium mt-2"></div><div class="muted text-xs">QR code for attendance</div></div>
+      </div>
+    </section>
+    <div class="flex flex-wrap items-center justify-between gap-3 mt-6">
+      <button type="button" id="f-back" class="ghost hidden">← Back</button>
+      <div class="flex-1 grid sm:grid-cols-2 gap-3 sm:max-w-md ml-auto">
+        <button type="button" id="f-draft" class="ghost">Save as Draft</button>
+        <button type="button" id="f-next" class="btn"></button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- EDIT EMPLOYEE (existing records: only changeable details) -->
+<div id="edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="x-form" class="card w-full max-w-lg max-h-full overflow-auto p-6" autocomplete="off" novalidate>
+    <div class="flex items-start justify-between gap-3">
+      <div><h2 class="text-xl font-semibold">Edit employee</h2><p class="muted text-sm mt-1">Update this employee’s details. The ID, hire date and face registration can’t be changed.</p></div>
+      <button type="button" id="x-x" class="ghost !px-3" aria-label="Close">✕</button>
+    </div>
+    <dl id="x-info" class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm mt-5 p-3 rounded-xl" style="background:var(--bg)"></dl>
+    <div class="flex items-center gap-4 mt-5">
+      <div id="x-prev" class="w-20 h-20 rounded-full overflow-hidden grid place-items-center text-lg font-medium shrink-0" style="background:var(--bg)"></div>
+      <div class="flex flex-wrap gap-2">
+        <input id="x-file" type="file" accept="image/png,image/jpeg" class="hidden">
+        <button type="button" id="x-up" class="ghost text-sm">Change photo</button>
+        <button type="button" id="x-rm" class="ghost text-sm">Remove photo</button>
+        <p class="muted text-xs w-full">JPG, PNG only. Max size: 2MB.</p>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
+      <div class="sm:col-span-2"><label class="lbl" for="x-name">Full name *</label><input id="x-name" class="input"></div>
+      <div><label class="lbl" for="x-pos">Position *</label><select id="x-pos" class="input"></select></div>
+      <div><label class="lbl" for="x-rate">Rate per hour *</label>
+        <div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input id="x-rate" type="number" min="0" step="0.01" class="input pl-8"></div></div>
+      <div><label class="lbl" for="x-shift">Default shift</label><select id="x-shift" class="input"></select></div>
+      <div><label class="lbl" for="x-contact">Contact number</label><input id="x-contact" class="input" inputmode="tel" placeholder="0917 123 4567"></div>
+      <div class="sm:col-span-2"><label class="lbl" for="x-status">Status</label><select id="x-status" class="input"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+    </div>
+    <div class="flex justify-end gap-2 mt-6"><button type="button" id="x-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Save changes</button></div>
+  </form>
+</div>
+
+<!-- PAYROLL DETAILS -->
+<div id="pay-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <div class="card w-full max-w-md max-h-full overflow-auto p-6 space-y-4">
+    <div class="flex items-start justify-between gap-3"><h2 id="pm-title" class="text-xl font-semibold"></h2><button type="button" id="pm-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <div id="pm-body" class="space-y-4 text-sm"></div>
+    <div class="flex justify-end gap-2"><button type="button" id="pm-close" class="ghost">Close</button><button type="button" id="pm-act" class="btn hidden"></button></div>
+  </div>
+</div>
+
+<!-- EDIT SCHEDULE -->
+<div id="sch-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="s-form" class="card w-full max-w-sm p-6 space-y-4" autocomplete="off">
+    <div class="flex items-start justify-between gap-3"><h2 class="text-xl font-semibold">Edit schedule</h2><button type="button" id="s-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <dl id="s-info" class="text-sm space-y-1"></dl>
+    <div><label class="lbl" for="s-status">Status</label><select id="s-status" class="input"><option value="work">Scheduled</option><option value="off">Day off</option><option value="leave">On leave</option></select></div>
+    <div id="s-work" class="space-y-4">
+      <div><label class="lbl" for="s-type">Shift</label><select id="s-type" class="input"><option value="morning">Morning Shift</option><option value="afternoon">Afternoon Shift</option><option value="night">Night Shift</option></select></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label class="lbl" for="s-in">Time in</label><input id="s-in" type="time" class="input"></div><div><label class="lbl" for="s-out">Time out</label><input id="s-out" type="time" class="input"></div></div>
+    </div>
+    <div class="flex justify-end gap-2"><button type="button" id="s-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Save changes</button></div>
+  </form>
+</div>
+
+<!-- ADD / EDIT DEDUCTION -->
+<div id="ded-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="dm-form" class="card w-full max-w-md max-h-full overflow-auto p-6 space-y-4" autocomplete="off" novalidate>
+    <div class="flex items-start justify-between gap-3"><div><h2 id="dm-title" class="text-xl font-semibold"></h2><p class="muted text-sm mt-1">For deductions that don’t come from attendance.</p></div><button type="button" id="dm-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <div><label class="lbl" for="dm-emp">Employee *</label><select id="dm-emp" class="input"></select></div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div><label class="lbl" for="dm-type">Deduction type *</label><select id="dm-type" class="input"></select></div>
+      <div><label class="lbl" for="dm-date">Date *</label><input id="dm-date" type="date" class="input"></div>
+    </div>
+    <div><label class="lbl" for="dm-amt">Amount *</label><div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input id="dm-amt" type="number" min="0" step="0.01" class="input pl-8" placeholder="0.00"></div></div>
+    <div><label class="lbl" for="dm-rem">Remarks</label><input id="dm-rem" class="input" maxlength="80" placeholder="e.g. Salary advance"></div>
+    <div class="flex justify-end gap-2"><button type="button" id="dm-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Save deduction</button></div>
+  </form>
+</div>
+
+<!-- ID CARD PREVIEW -->
+<div id="card-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <div class="card w-full max-w-md max-h-full overflow-auto p-6 space-y-4">
+    <div class="flex items-start justify-between gap-3"><div><h2 class="text-xl font-semibold">Employee ID card</h2><p class="muted text-sm mt-1">Front and back. Printed at standard ID size (85.6 × 54 mm).</p></div><button type="button" id="cm-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <div id="cm-body" class="flex flex-col items-center gap-4"></div>
+    <p class="muted text-xs">In the print dialog choose “Save as PDF” to download, or print on card stock and cut to size.</p>
+    <div class="flex justify-end gap-2"><button type="button" id="cm-close" class="ghost">Close</button><button type="button" id="cm-print" class="btn">Print / Save PDF</button></div>
+  </div>
+</div>
+<div id="card-sheet" aria-hidden="true"></div>
+
+<button id="theme" class="theme-btn" aria-label="Switch to dark mode" title="Switch theme"></button>
+
+<div id="toasts" class="fixed left-0 right-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none" style="top:calc(1rem + env(safe-area-inset-top,0px))"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
