@@ -585,7 +585,7 @@ const minOf = t => { const q = new Date(t); return q.getHours() * 60 + q.getMinu
 
 function attRecord(id, d) { // up to 4 scans a day: time in, break out, break in, time out
   const key = dkey(d), s = getSched(id, d), isToday = key === dkey(new Date()), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0, ot: 0 };
+  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0 };
   if (s.in == null) return { ...r, st: s.t };
   if (isToday) r.t = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key).slice(0, 4).map(x => minOf(x.ts));
   else if (hsh(id + key) % 100 >= 7) { // demo history: deterministic, so the same day always shows the same record
@@ -603,7 +603,6 @@ function attRecord(id, d) { // up to 4 scans a day: time in, break out, break in
     if (en == null) { en = nowMin; if (en < st) en += 1440; }
     r.hrs += Math.max(0, en - st);
   }
-  r.ot = r.tout != null ? Math.max(0, r.tout - s.out) : 0; // still used by payroll; just not shown in this table
   r.st = r.tin > s.in + GRACE ? 'late' : 'present';
   return r;
 }
@@ -651,13 +650,13 @@ $('#a-pager').addEventListener('click', e => { const b = e.target.closest('butto
 $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); toast('Coming soon in this prototype.'); }));
 
 /* ---------- Deductions ----------
-   Automatic: Tardiness + Undertime are DERIVED from attendRecord() (Attendance + Schedule), never stored,
-   so they always match the Attendance page. Manual: Cash Advance, Uniform Fee, Lost ID, Other are stored.
+   Automatic: Tardiness is DERIVED from attendRecord() (Attendance + Schedule), never stored,
+   so it always matches the Attendance page. Manual: Cash Advance, Uniform Fee, Lost ID, Other are stored.
    Absences are NOT deducted: payroll pays only hours worked (avoids double-deducting). */
-const DEF_RATE = 80, UNDER_GRACE = 5, MAX_DAYS = 92; // fallback ₱/hr for employees without a rate; undertime grace (min); max range
-const DED_TYPES = { tardiness: 'Tardiness', undertime: 'Undertime', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
-const DED_MANUAL = ['advance', 'uniform', 'lostid']; // fixed manual types; "Other" is added last and lets the admin type a new one
-const DED_BADGE = { tardiness: 'b-err', undertime: 'b-warn', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
+const DEF_RATE = 80, MAX_DAYS = 92; // fallback ₱/hr for employees without a rate; max range
+const DED_TYPES = { tardiness: 'Tardiness', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
+const DED_MANUAL = ['tardiness', 'advance', 'uniform', 'lostid']; // fixed types shown in the filter and in Add deduction (Tardiness is also generated automatically); "Other" is added last and lets the admin type a new one
+const DED_BADGE = { tardiness: 'b-err', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
 const DED_CUSTOM = store.get('dedTypes', []).filter(c => c && c.k && c.label); // types typed via "Other": [{ k, label }]. Empty at first, saved in localStorage
 DED_CUSTOM.forEach(c => { DED_TYPES[c.k] = c.label; DED_BADGE[c.k] = 'b-muted'; });
 const dedName = t => DED_TYPES[t] || 'Other'; // safe label lookup (call esc() when putting it in HTML)
@@ -670,12 +669,12 @@ const DED = store.get('deds', null) || seedDeds();
 const saveDed = () => store.set('deds', DED);
 
 function autoDeds(from, to) {
-  const out = [];
+  const out = [], t0 = new Date(); t0.setHours(0, 0, 0, 0); if (to > t0) to = t0; // never look past today
+
   for (let d = new Date(to); d >= from; d = addDays(d, -1)) Object.entries(EMP).forEach(([id, e]) => {
     if (!e.active || e.draft || d < new Date(e.hired + 'T00:00')) return;
     const r = attRecord(id, d), date = dkey(d);
     if (r.st === 'late') { const m = r.tin - r.s.in; out.push({ k: `a-${id}-${date}-t`, auto: true, date, id, type: 'tardiness', amount: dedAmt(id, m), remarks: `Late by ${m} minute${m === 1 ? '' : 's'}` }); }
-    if (r.tout != null && r.s.out - r.tout > UNDER_GRACE) { const m = r.s.out - r.tout; out.push({ k: `a-${id}-${date}-u`, auto: true, date, id, type: 'undertime', amount: dedAmt(id, m), remarks: `Undertime (${fmtHM(m)})` }); }
   });
   return out;
 }
@@ -751,13 +750,14 @@ function renderDeductions() {
     : '<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No deductions match your filters.</td></tr>';
   $('#d-count').textContent = all.length ? `Showing ${at + 1} to ${at + part.length} of ${all.length} records` : 'Showing 0 records';
   $('#d-pager').innerHTML = dpager(dPage, pages);
-  $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) and undertime (over ${UNDER_GRACE} min) are generated from Attendance and Schedules: hourly rate ÷ 60 × minutes (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours and these deductions adjust for lateness and undertime.`;
+  $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) is generated from Attendance and Schedules: hourly rate ÷ 60 × minutes late (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours. There is no overtime or undertime.`;
 }
 function refreshDedTypes(pick) { // keeps the filter and the Add deduction drop-down in step with the saved types
   const opt = (k, v) => `<option value="${esc(k)}">${esc(v)}</option>`, cf = $('#d-type').value;
-  $('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + Object.entries(DED_TYPES).map(([k, v]) => opt(k, v)).join('');
-  $('#d-type').value = DED_TYPES[cf] ? cf : '';
-  $('#dm-type').innerHTML = [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other'].map(k => opt(k, DED_TYPES[k])).join(''); // "Other" always last
+  const keys = [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other']; // same list for the filter and for Add deduction; "Other" always last
+  $('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + keys.map(k => opt(k, DED_TYPES[k])).join('');
+  $('#d-type').value = keys.includes(cf) ? cf : '';
+  $('#dm-type').innerHTML = keys.map(k => opt(k, DED_TYPES[k])).join('');
   if (pick) $('#dm-type').value = pick;
 }
 function resetDedTypes() { DED_CUSTOM.forEach(c => { delete DED_TYPES[c.k]; delete DED_BADGE[c.k]; }); DED_CUSTOM.length = 0; store.set('dedTypes', DED_CUSTOM); refreshDedTypes(); }
@@ -782,7 +782,7 @@ function commitOther() { // the typed name becomes a saved deduction type. Retur
   if (!name) { if (dEdit && DED.find(x => x.k === dEdit)?.type === 'other') return null; toast('Type the deduction name.', 'err'); $('#dm-other').focus(); return false; }
   if (low === 'other') { toast('Type a specific name instead of “Other”.', 'err'); $('#dm-other').focus(); return false; }
   const hit = Object.entries(DED_TYPES).find(([, v]) => v.toLowerCase() === low); // already in the list: reuse it, no duplicates
-  if (hit) { if (!DED_MANUAL.includes(hit[0]) && !DED_CUSTOM.some(c => c.k === hit[0])) { toast('Tardiness and Undertime are generated automatically.', 'err'); return false; } return hit[0]; }
+  if (hit) { if (!DED_MANUAL.includes(hit[0]) && !DED_CUSTOM.some(c => c.k === hit[0])) { toast('Tardiness is generated automatically.', 'err'); return false; } return hit[0]; }
   const k = 'c' + Date.now().toString(36); DED_CUSTOM.push({ k, label: name }); DED_TYPES[k] = name; DED_BADGE[k] = 'b-muted';
   store.set('dedTypes', DED_CUSTOM); refreshDedTypes(k); toast('Deduction type added.'); return k;
 }
@@ -801,7 +801,7 @@ $('#dm-form').addEventListener('submit', e => {
   if (date > dkey(new Date())) { toast('The date can’t be in the future.', 'err'); return; }
   const old = dEdit ? DED.find(x => x.k === dEdit) : null;
   if (old && dedState(old.id, old.date) === 'locked') { toast('This deduction belongs to a processed payroll and can’t be edited.', 'err'); return; }
-  if (dedState(id, date) === 'locked') { toast(`Payroll for ${fmR(dedPeriod(date))} is already processed. Use a date in the current week so it’s deducted in the next payroll.`, 'err'); return; }
+  if (dedState(id, date) === 'locked') { toast(`Payroll for ${fmR(dedPeriod(date))} is already processed. Use a date in the current week so it’s included in the current payroll.`, 'err'); return; }
   let type = $('#dm-type').value;
   if (type === 'other') { const k = commitOther(); if (k === false) return; type = k || 'other'; }
   const rec = { k: dEdit || 'm-' + Date.now() + Math.random().toString(36).slice(2, 5), id, type, amount, date, remarks: $('#dm-rem').value.trim() };
@@ -828,36 +828,36 @@ $('#d-rows').addEventListener('click', e => {
 });
 
 /* ---------- Payroll ----------
-   Weekly periods (Mon–Sun). A period is payable once it has ended, so the OPEN payroll is the latest completed week.
-   It stays on "Current payroll" until the next week ends, then rolls into History. Processed and Released records are frozen (SNAP).
+   Weekly periods (Mon–Sun). The OPEN payroll is the current week, calculated live up to today so it is ready on the payroll date (the last day of the period).
+   It stays on "Current payroll" until the week ends, then rolls into History. Processed and Released records are frozen (SNAP).
    Flow: Draft → For review → Approved → Processed → Released. Processing locks the figures; releasing the payslip is a separate, manual step. */
-const PAY = store.get('pay', {}), SNAP = store.get('paysnap', {}), OT_MULT = 1.25; // overtime paid at 125%
+const PAY = store.get('pay', {}), SNAP = store.get('paysnap', {});
 const savePay = () => { store.set('pay', PAY); store.set('paysnap', SNAP); };
 const PAY_ST = { none: ['b-muted', 'Not generated'], draft: ['b-muted', 'Draft'], review: ['b-warn', 'For review'], approved: ['b-night', 'Approved'], processed: ['b-warn', 'Processed'], released: ['b-ok', 'Released'] };
 const PAY_NEXT = { draft: ['review', 'Send for review'], review: ['approved', 'Approve'], approved: ['processed', 'Process payroll'], processed: ['released', 'Release payslip'] };
 const slipOk = st => st === 'approved' || st === 'processed' || st === 'released'; // payslip can be previewed from Approved; printed only once Released
 let pTab = 'current', pPage = 1, hPage = 1, pSel = new Set(), pOpen = null, hSel = null;
-const curStart = () => addDays(mondayOf(new Date()), -7), weekEnd = s => addDays(s, 6);
+const curStart = () => mondayOf(new Date()), weekEnd = s => addDays(s, 6);
 const pKey = (s, id) => dkey(s) + '|' + id, pStatus = (s, id) => PAY[pKey(s, id)] || 'none';
 const sd = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const fmR = s => `${sd(s)} – ${weekEnd(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 function payCalc(id, from, to, A) {
   const today = new Date(); today.setHours(0, 0, 0, 0); const e = EMP[id];
-  const c = { days: 0, present: 0, late: 0, absent: 0, mins: 0, ot: 0, reg: 0, lates: [] };
+  const c = { days: 0, present: 0, late: 0, absent: 0, mins: 0, reg: 0, lates: [] };
   for (let d = new Date(from); d <= to && d <= today; d = addDays(d, 1)) {
     if (d < new Date(e.hired + 'T00:00')) continue;
     const r = attRecord(id, d); if (r.s.in == null || r.st === 'upcoming') continue;
     c.days++;
     if (r.st === 'absent') c.absent++;
     else {
-      c.present++; c.mins += r.hrs; c.ot += r.ot; c.reg += r.s.out - r.s.in; // paid on scheduled hours; lateness and undertime are deducted separately
+      c.present++; c.mins += r.hrs; c.reg += r.s.out - r.s.in; // paid on scheduled hours; only lateness is deducted
       if (r.st === 'late') { c.late++; c.lates.push({ d: new Date(d), tin: r.tin, sin: r.s.in }); }
     }
   }
   const fk = dkey(from), tk = dkey(to);
   c.ds = [...A.filter(x => x.id === id), ...DED.filter(x => x.id === id && x.date >= fk && x.date <= tk)];
   c.rate = rateOf(id); const R = m => Math.round(c.rate / 60 * m * 100) / 100;
-  c.basic = R(c.reg); c.otPay = Math.round(R(c.ot) * OT_MULT * 100) / 100; c.gross = Math.round((c.basic + c.otPay) * 100) / 100;
+  c.basic = R(c.reg); c.gross = c.basic; // no overtime
   c.ded = c.ds.reduce((s, x) => s + x.amount, 0); c.net = Math.max(0, c.gross - c.ded);
   c.log = dayLog(id, from); // day-by-day record, frozen with the payroll snapshot
   return c;
@@ -879,13 +879,13 @@ function payAdv(s, id, A) {
 }
 function resetPay() { // history: the last three closed periods are already processed and released, like a real payroll record
   Object.keys(PAY).forEach(k => delete PAY[k]); Object.keys(SNAP).forEach(k => delete SNAP[k]);
-  [-14, -21, -28].forEach(off => {
+  [-7, -14, -21].forEach(off => {
     const s = addDays(curStart(), off), A = autoDeds(s, weekEnd(s));
     Object.keys(EMP).filter(id => EMP[id].active && !EMP[id].draft).forEach(id => { PAY[pKey(s, id)] = 'released'; SNAP[pKey(s, id)] = payCalc(id, s, weekEnd(s), A); });
   });
-  store.set('payv', 3); savePay();
+  store.set('payv', 5); savePay();
 }
-if (store.get('payv', 0) !== 3) resetPay(); // v3 adds the Released status
+if (store.get('payv', 0) !== 5) resetPay(); // v5: current period is the live week, history starts with last week
 
 const dedCell = c => `<td class="pr-3"${c.ds.length ? ` title="${esc(c.ds.map(x => dedName(x.type) + ' ' + num(x.amount)).join(', '))}"` : ''}>${num(c.ded)}${c.ds.length ? `<div class="muted text-xs">${c.ds.length} item${c.ds.length === 1 ? '' : 's'}</div>` : ''}</td>`;
 const payRowHtml = ({ id, e, c, st }, chk) => `<tr class="border-t hair">${chk ? `<td class="py-2.5 pr-3"><input type="checkbox" data-sel="${id}" ${pSel.has(id) ? 'checked' : ''} aria-label="Select ${esc(e.name)}"></td>` : ''}<td class="${chk ? '' : 'py-2.5 '}pr-3 whitespace-nowrap">${id}</td>
@@ -901,9 +901,9 @@ function renderPayroll() {
   cur ? renderPayCur() : renderPayHis();
 }
 function renderPayCur() {
-  const s = curStart(), nx = addDays(s, 14);
+  const s = curStart();
   $('#p-label').textContent = `Current payroll period: ${fmR(s)}`;
-  $('#p-info').textContent = `${sd(addDays(s, 7))} – ${sd(addDays(s, 13))} is still in progress. Its payroll opens on ${nx.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}, and this period then moves to History.`;
+  $('#p-info').textContent = `Figures are live and updated up to today (${sd(new Date())}). Payroll date: ${weekEnd(s).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}. After that, this period moves to History.`;
   const all = payRows(s), cp = $('#p-pos').value, poss = [...new Set(all.map(r => r.e.pos))].sort();
   $('#p-pos').innerHTML = '<option value="">All Positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
   $('#p-pos').value = poss.includes(cp) ? cp : '';
@@ -957,7 +957,7 @@ function openPay(id, s, slip, ro) {
   $('#pm-title').textContent = slip ? 'Payslip' : 'Payroll details';
   $('#pm-body').innerHTML = `<div><div class="font-medium">${esc(e.name)}</div><div class="muted">${id} · ${esc(e.pos)}</div><div class="muted text-xs mt-1">Pay period: ${fmR(s)} · <span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></div></div>
   <div><h3 class="font-medium mb-2">Attendance summary</h3><dl class="space-y-1 border-t hair pt-2">${line('Scheduled days', c.days)}${line('Days present', c.present)}${line('Late', c.late)}${line('Absent', c.absent)}${line('Total hours', fmtHM(c.mins))}</dl></div>
-  <div><h3 class="font-medium mb-2">Payroll</h3><dl class="space-y-1 border-t hair pt-2">${line('Basic rate', peso(c.rate) + '/hr')}${line('Regular pay (' + fmtHM(c.reg) + ')', peso(c.basic))}${c.ot ? line('Overtime (' + fmtHM(c.ot) + ' × 1.25)', peso(c.otPay)) : ''}${line('Gross pay', peso(c.gross))}${c.ds.map(x => line(`${esc(dedName(x.type))} <span class="text-xs">(${fmtDate(x.date)})</span>`, '− ' + num(x.amount))).join('')}${line('Total deductions', peso(c.ded))}<div class="border-t hair pt-2">${line('NET PAY', peso(c.net), 1)}</div></dl></div>
+  <div><h3 class="font-medium mb-2">Payroll</h3><dl class="space-y-1 border-t hair pt-2">${line('Rate', peso(c.rate) + '/hr')}${line('Regular pay (' + fmtHM(c.reg) + ')', peso(c.basic))}${line('Gross pay', peso(c.gross))}${c.ds.map(x => line(`${esc(dedName(x.type))} <span class="text-xs">(${fmtDate(x.date)})</span>`, '− ' + num(x.amount))).join('')}${line('Total deductions', peso(c.ded))}<div class="border-t hair pt-2">${line('NET PAY', peso(c.net), 1)}</div></dl></div>
   ${c.lates.length ? `<div><h3 class="font-medium mb-2">Late attendance</h3><ul class="space-y-2">${c.lates.map(l => `<li class="card p-3"><div>${l.d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${fmtMin(l.tin)}</div><div class="muted text-xs">Scheduled ${fmtMin(l.sin)} · Late by ${l.tin - l.sin} min</div></li>`).join('')}</ul></div>` : ''}`;
   const nx = PAY_NEXT[st], a = $('#pm-act'); a.classList.toggle('hidden', !(nx && !slip && !ro)); // always a real boolean: toggle(x, undefined) flips instead of forcing // reports are read-only
   if (nx) a.textContent = nx[1];
@@ -1001,10 +1001,10 @@ function renderReports() {
   const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
   $('#r-rows').innerHTML = part.length ? part.map(({ id, e, c, st }) => `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
-    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3">${hrs2(c.reg)}</td><td class="pr-3">${hrs2(c.ot)}</td><td class="pr-3">${num(c.basic)}</td><td class="pr-3">${num(c.otPay)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
+    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3">${hrs2(c.reg)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
     <td class="pr-3"><span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></td>
     <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button> <button class="ghost !py-1 !px-2 text-xs" data-rp="${id}" ${slipOk(st) ? '' : 'disabled title="Available once payroll is approved"'}>View payslip</button></td></tr>`).join('')
-    : `<tr class="border-t hair"><td colspan="13" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
+    : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
   $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#r-pager').innerHTML = dpager(rPage, pages);
   $('#r-sum').innerHTML = [['Total employees', rows.length], ['Total gross pay', peso(sum(rows, 'gross'))], ['Total deductions', peso(sum(rows, 'ded'))], ['Total net pay', peso(sum(rows, 'net'))], ['Pending review', pending]]
@@ -1022,10 +1022,10 @@ $('#r-menu').addEventListener('click', e => {
   if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
   if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); window.print(); return; }
   const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
-  const head = ['Employee ID', 'Employee Name', 'Position', 'Pay Period', 'Regular Hours', 'Overtime Hours', 'Basic Pay', 'Overtime Pay', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
-  const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.reg), hrs2(c.ot), c.basic.toFixed(2), c.otPay.toFixed(2), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
+  const head = ['Employee ID', 'Employee Name', 'Position', 'Pay Period', 'Regular Hours', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
+  const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.reg), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
   const t = k => rView.rows.reduce((x, r) => x + r.c[k], 0).toFixed(2);
-  lines.push(['TOTAL', '', '', per, '', '', t('basic'), t('otPay'), t('gross'), t('ded'), t('net'), '']);
+  lines.push(['TOTAL', '', '', per, '', t('gross'), t('ded'), t('net'), '']);
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + [head, ...lines].map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
   a.download = `payroll-report_${dkey(s)}_to_${dkey(weekEnd(s))}.csv`; a.click(); URL.revokeObjectURL(a.href); toast('Report exported.');
 });
@@ -1053,10 +1053,10 @@ function psHtml(id, s, st) {
   const ded = Object.entries(g).map(([t, v]) => `<tr><td>${esc(dedName(t))}</td><td class="r">${num(v)}</td></tr>`).join('') || '<tr><td>No deductions</td><td class="r">0.00</td></tr>';
   return `<div class="ps">${st === 'released' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet. Release it from Payroll once payroll is processed.</div>'}
   <div class="ps-head"><div><h2>EMPLOYEE PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">Bulacan, Philippines</div></div></div>
-  <dl class="ps-info"><dt>Employee Name</dt><dd>: ${esc(e.name)}</dd><dt>Employee ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(addDays(weekEnd(s), 1))}</dd></dl>
+  <dl class="ps-info"><dt>Employee Name</dt><dd>: ${esc(e.name)}</dd><dt>Employee ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(weekEnd(s))}</dd></dl>
   <h3>1. Attendance summary</h3><table><thead><tr><th>Date</th><th>Day</th><th>Time in</th><th>Time out</th><th class="r">Total hours</th></tr></thead><tbody>${att}<tr class="ps-tot"><td colspan="4" class="r">Total Hours Worked</td><td class="r">${fmtHM(c.mins)}</td></tr></tbody></table>
   <div class="ps-cols"><div><h3>2. Earnings / gross pay</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>
-    <tr><td>Basic Pay (${peso(c.rate)}/hr × ${fmtHM(c.reg)})</td><td class="r">${num(c.basic)}</td></tr><tr><td>Overtime Pay (${fmtHM(c.ot)} × 1.25)</td><td class="r">${num(c.otPay)}</td></tr>
+    <tr><td>Basic Pay (${peso(c.rate)}/hr × ${fmtHM(c.reg)})</td><td class="r">${num(c.basic)}</td></tr>
     <tr class="ps-tot"><td>GROSS PAY</td><td class="r">${peso(c.gross)}</td></tr></tbody></table></div>
   <div><h3>3. Deductions</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>${ded}<tr class="ps-tot"><td>TOTAL DEDUCTIONS</td><td class="r">${peso(c.ded)}</td></tr></tbody></table></div></div>
   <div class="ps-net"><span>NET PAY</span><span>${peso(c.net)}</span></div>

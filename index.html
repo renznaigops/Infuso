@@ -325,8 +325,8 @@
       <div id="r-stats" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-2"></div>
       <div class="card p-4 mt-4">
         <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-medium">Payroll records</h2><p id="r-count" class="muted text-sm"></p></div>
-        <div class="overflow-auto mt-2"><table class="w-full text-sm" style="min-width:1240px">
-          <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Regular hrs</th><th class="font-normal pr-3">OT hrs</th><th class="font-normal pr-3">Basic pay (₱)</th><th class="font-normal pr-3">OT pay (₱)</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal no-print">Actions</th></tr></thead>
+        <div class="overflow-auto mt-2"><table class="w-full text-sm" style="min-width:1000px">
+          <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Regular hrs</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal no-print">Actions</th></tr></thead>
           <tbody id="r-rows"></tbody></table></div>
         <div id="r-pager" class="flex gap-2 justify-end mt-4 no-print"></div></div>
       <div id="r-sum" class="card p-4 mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4"></div>
@@ -375,13 +375,13 @@
           </div>
           <div class="overflow-auto mt-3">
             <table class="w-full text-sm min-w-[980px]">
-              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 w-8"><input type="checkbox" id="p-all" aria-label="Select all"></th><th class="font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Basic rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 w-8"><input type="checkbox" id="p-all" aria-label="Select all"></th><th class="font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
               <tbody id="p-rows"></tbody>
             </table>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="p-count" class="muted text-sm"></p><div id="p-pager" class="flex gap-2"></div></div>
           <div id="p-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4"></div>
-          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. A period becomes payable once it has ended. Absent days are unpaid, regular pay is the scheduled hours on days worked, overtime is paid at 1.25×, and Tardiness, Undertime and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the employee is a separate step. Employees stay in the current period until the whole period closes and moves to History.</p>
+          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the employee is a separate step. Employees stay in the current period until the whole period closes and moves to History.</p>
         </div>
         <div id="p-his" class="hidden">
           <p class="muted text-sm mt-4">Closed pay periods, archived as a whole. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
@@ -391,7 +391,7 @@
           <div id="h-detail" class="hidden mt-6">
             <div class="flex flex-wrap items-center justify-between gap-2"><h2 id="hd-title" class="font-medium"></h2><button type="button" id="hd-back" class="ghost text-sm">Close records</button></div>
             <div class="overflow-auto mt-2"><table class="w-full text-sm min-w-[900px]">
-              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Basic rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
               <tbody id="hd-rows"></tbody></table></div>
             <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="hd-count" class="muted text-sm"></p><div id="hd-pager" class="flex gap-2"></div></div>
           </div>
