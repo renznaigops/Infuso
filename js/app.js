@@ -24,7 +24,7 @@ function defaultEmps() {
   });
   return o;
 }
-const SEED = { username: 'admin', password: 'admin123', pin: '123456', business: 'InfusoPay Café', name: 'Maria Santos' };
+const SEED = { username: 'admin', password: 'admin123', pin: '123456', business: 'InfusoPay', name: 'Maria Santos' };
 
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -32,6 +32,10 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } },
 };
+try {
+  const savedAcct = store.get('acct', null);
+  if (savedAcct && savedAcct.business === 'InfusoPay Café') { savedAcct.business = SEED.business; store.set('acct', savedAcct); }
+} catch (e) {}
 const fmtTime = d => new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
 const initials = n => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 const go = h => { if (location.hash === '#/' + h) route(); else location.hash = '#/' + h; };
@@ -56,7 +60,7 @@ function getSched(id, d) {
   const o = SCH[dkey(d)]?.[id]; if (o) return o.t === 'leave' ? { t: 'off' } : o; // the only statuses are Scheduled and Day off
   return defSched(id, d);
 }
-function defSched(id, d) { // the employee's default pattern, used when a day has no edit
+function defSched(id, d) { // the staff's default pattern, used when a day has no edit
   const wd = (d.getDay() + 6) % 7; // Mon = 0
   if (wd === (+id.slice(4) - 1) % 7) return { t: 'off' }; // default: one weekly day off, staggered
   const t = TYPE_BY_SHIFT[EMP[id].shift] || 'morning', p = SHIFT_TYPES[t];
@@ -67,11 +71,17 @@ const schedChanged = (id, d) => { // true when an edit made this day differ from
   return (b.in ?? null) !== (s.in ?? null) || (b.out ?? null) !== (s.out ?? null);
 };
 const startOf = id => getSched(id, new Date()).in ?? 1e9; // scheduled start today (minutes), or 1e9 when not working
+const GRACE = 15; // minutes after scheduled start before time in counts as late
+function isLateNow(id, ts = Date.now()) { // minutes late past scheduled start (0 when on time / not scheduled)
+  const s = startOf(id); if (s > 1e8) return 0;
+  const d = new Date(ts), m = d.getHours() * 60 + d.getMinutes();
+  return m > s + GRACE ? m - s : 0;
+}
 const fmtMin = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}:${String(mm).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
 const fmtShort = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}${mm ? ':' + String(mm).padStart(2, '0') : ''} ${h >= 12 ? 'PM' : 'AM'}`; };
 const schedText = id => { const s = getSched(id, new Date()); return s.in != null ? `${fmtMin(s.in)} – ${fmtMin(s.out)}` : TYPE_LABEL[s.t] + ' today'; };
 const HIST = [[12, 2, 1], [13, 1, 1], [11, 3, 1], [13, 2, 0], [10, 2, 3], [12, 1, 2]]; // previous 6 days: [on time, late, absent]
-const OFFSETS = [-10, -5, 0, 3, -2, 20, -8, 5, -1, 25, 2]; // minutes vs shift start; first 11 employees are already in today
+const OFFSETS = [-10, -5, 0, 3, -2, 20, -8, 5, -1, 25, 2]; // minutes vs shift start; first 11 staff are already in today
 function seedLogs() {
   const day = new Date(); day.setHours(0, 0, 0, 0);
   return activeIds().filter(id => { const s = getSched(id, day); return s.in != null && s.t !== 'night'; }).slice(0, OFFSETS.length)
@@ -116,7 +126,36 @@ $$('[data-eye]').forEach(b => b.addEventListener('click', () => {
   b.textContent = show ? 'Hide' : 'Show';
 }));
 $('#lu').value = store.get('remember', '');
-$('#forgot').addEventListener('click', () => toast('Password reset isn’t available in this prototype.', 'err'));
+/* Forgot password (demo-safe): verify username + 6-digit payroll PIN, then set a new password. No email/backend. */
+const fpModal = $('#forgot-modal');
+function openForgot() {
+  const a = store.get('acct', SEED);
+  $('#fp-user').value = $('#lu').value.trim() || a.username || '';
+  $('#fp-pin').value = ''; $('#fp-new').value = ''; $('#fp-confirm').value = '';
+  $('#fp-err').classList.add('hidden');
+  fpModal.classList.remove('hidden'); fpModal.classList.add('flex');
+  $('#fp-user').focus();
+}
+const closeForgot = () => { fpModal.classList.add('hidden'); fpModal.classList.remove('flex'); };
+$('#forgot').addEventListener('click', openForgot);
+$('#fp-x').addEventListener('click', closeForgot); $('#fp-cancel').addEventListener('click', closeForgot);
+addEventListener('keydown', e => { if (e.key === 'Escape') closeForgot(); });
+$('#fp-pin').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
+$('#fp-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const err = $('#fp-err'), fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+  const a = store.get('acct', SEED);
+  const u = $('#fp-user').value.trim(), pin = $('#fp-pin').value, nw = $('#fp-new').value, cf = $('#fp-confirm').value;
+  if (!u) return fail('Enter your username.');
+  if (u.toLowerCase() !== String(a.username).toLowerCase()) return fail('No account found for that username on this device.');
+  if (!a.pin) return fail('This account has no payroll PIN yet, so identity can’t be verified. Log in and set a PIN first.');
+  if (pin !== a.pin) return fail('Incorrect payroll PIN.');
+  if (nw.length < 6) return fail('Use a new password with at least 6 characters.');
+  if (nw !== cf) return fail('New passwords don’t match.');
+  a.password = nw; store.set('acct', a); if (sess) sess.password = nw;
+  closeForgot(); toast('Password reset. Log in with your new password.');
+  $('#lu').value = u; $('#lp').value = ''; $('#lp').focus();
+});
 
 $('#login-form').addEventListener('submit', e => {
   e.preventDefault();
@@ -167,7 +206,36 @@ $('#pin-form').addEventListener('submit', e => {
   pinFails = 0; unlocked = true; go(pinTarget);
 });
 
-/* Log out asks for the 6-digit PIN first, so employees at the station can't log the admin out */
+/* ---------- Reusable confirmation card (replaces native confirm()) ---------- */
+const cfModal = $('#confirm-modal');
+let cfResolve = null;
+const CF_ICON = { danger: '!', warn: '?', ok: '✓' };
+function confirmCard({ title = 'Are you sure?', msg = '', ok = 'Confirm', cancel = 'Cancel', tone = 'danger' } = {}) {
+  if (cfResolve) closeConfirm(false); // settle any card still on screen so its await never hangs
+  $('#cf-title').textContent = title;
+  $('#cf-msg').textContent = msg;
+  $('#cf-ok').textContent = ok;
+  $('#cf-cancel').textContent = cancel;
+  const ic = $('#cf-icon');
+  ic.textContent = CF_ICON[tone] || CF_ICON.danger;
+  ic.className = 'cf-icon mx-auto ' + (tone || 'danger');
+  const okBtn = $('#cf-ok');
+  okBtn.classList.toggle('cf-danger', tone === 'danger');
+  cfModal.classList.remove('hidden'); cfModal.classList.add('flex');
+  (tone === 'danger' ? $('#cf-cancel') : okBtn).focus();
+  return new Promise(res => { cfResolve = res; });
+}
+function closeConfirm(v) {
+  if (!cfModal || cfModal.classList.contains('hidden')) return;
+  cfModal.classList.add('hidden'); cfModal.classList.remove('flex');
+  if (cfResolve) { const r = cfResolve; cfResolve = null; r(v); }
+}
+$('#cf-cancel').addEventListener('click', () => closeConfirm(false));
+$('#cf-ok').addEventListener('click', () => closeConfirm(true));
+cfModal.addEventListener('click', e => { if (e.target === cfModal) closeConfirm(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && cfResolve) closeConfirm(false); });
+
+/* Log out asks for the 6-digit PIN first, so staff at the station can't log the admin out */
 const loModal = $('#logout-modal');
 function openLogout() {
   if (!sess.pin) { sess = null; go('login'); return; } // older accounts with no PIN yet log out directly
@@ -238,7 +306,7 @@ function handleCode(code) {
   const now = Date.now();
   if (code === lastScan.c && now - lastScan.t < 3000) return; // ignore repeat reads
   lastScan = { c: code, t: now };
-  if (!EMP[code]) { toast('Unrecognized employee ID.', 'err'); return; }
+  if (!EMP[code]) { toast('Unrecognized staff ID.', 'err'); return; }
   if (EMP[code].draft) { toast(EMP[code].name + '’s setup isn’t complete yet. Ask your manager.', 'err'); return; }
   if (!EMP[code].active) { toast(EMP[code].name + ' is inactive.', 'err'); return; }
   const sc = getSched(code, new Date()); // no shift today (day off / leave): block time in, but still allow time out for someone already clocked in
@@ -254,21 +322,61 @@ const logs = () => store.get('logs', []);
 const nextType = id => { const l = logs().filter(x => x.id === id).pop(); return l && l.type === 'in' ? 'out' : 'in'; };
 
 function startVerify() { // QR scan -> confirm (no face step)
-  const e = EMP[pending], label = nextType(pending) === 'in' ? 'time in' : 'time out';
+  const e = EMP[pending], type = nextType(pending), label = type === 'in' ? 'time in' : 'time out';
   $('#av').innerHTML = e.photo ? `<img src="${e.photo}" alt="" class="w-full h-full object-cover">` : esc(initials(e.name)); // photo helps the admin check who is at the station
   $('#en').textContent = e.name; $('#ei').textContent = pending;
   $('#ep').textContent = e.pos; $('#es').textContent = schedText(pending);
   $('#vt').textContent = 'Confirm attendance'; $('#vs').textContent = `QR code scanned. Confirm to record your ${label}.`;
   $('#vbtn').textContent = `Confirm ${label}`;
+  const lw = $('#late-wrap');
+  if (lw) {
+    const today = new Date().toDateString();
+    const firstIn = type === 'in' && !logs().some(x => x.id === pending && x.type === 'in' && new Date(x.ts).toDateString() === today);
+    const late = firstIn && isLateNow(pending); // only the day's first time in can be late (break-in never asks)
+    $('#late-note').value = '';
+    if (late) $('#late-msg').textContent = `You are ${late} min late (scheduled ${fmtMin(startOf(pending))}, ${GRACE}-min grace included).`;
+    lw.classList.toggle('hidden', !late);
+  }
 }
-$('#vbtn').addEventListener('click', () => {
+$('#vbtn').addEventListener('click', async () => {
   const type = nextType(pending), e = EMP[pending], now = Date.now();
-  const l = logs(); l.push({ id: pending, name: e.name, type, ts: now }); store.set('logs', l);
-  toast(`${e.name}: Time ${type} at ${fmtTime(now)}`);
+  const today = new Date().toDateString();
+  const firstIn = type === 'in' && !logs().some(x => x.id === pending && x.type === 'in' && new Date(x.ts).toDateString() === today);
+  const late = firstIn && isLateNow(pending, now);
+  const noteEl = $('#late-note');
+  const note = late && noteEl ? noteEl.value.trim().replace(/\s+/g, ' ').slice(0, 140) : ''; // keep one line, cap length
+  const ok = await confirmCard({
+    title: type === 'in' ? 'Confirm time in?' : 'Confirm time out?',
+    msg: `${e.name} (${pending}): record ${type === 'in' ? 'time in' : 'time out'} at ${fmtTime(now)}${late ? ` — ${late} min late` : ''}?`,
+    ok: type === 'in' ? 'Confirm time in' : 'Confirm time out', tone: 'ok',
+  });
+  if (!ok) return;
+  const l = logs(); l.push({ id: pending, name: e.name, type, ts: now, ...(note ? { note } : {}) }); store.set('logs', l);
+  toast(`${e.name}: Time ${type} at ${fmtTime(now)}` + (note ? ' — reason saved.' : ''));
   pending = null; go('scan');
 });
 
 /* ---------- Dashboard ---------- */
+function lateNotifs() { // today's late time-ins, newest first — employee reasons ride along on the log entry
+  const today = new Date().toDateString(), t = logs().filter(x => new Date(x.ts).toDateString() === today);
+  const seen = new Set();
+  return t.filter(x => x.type === 'in' && EMP[x.id] && EMP[x.id].active && !seen.has(x.id) && seen.add(x.id))
+    .map(x => {
+      const d = new Date(x.ts), m = d.getHours() * 60 + d.getMinutes(), s = startOf(x.id);
+      return m > s + GRACE ? { ...x, mins: m - s, sin: s } : null;
+    }).filter(Boolean).sort((a, b) => b.ts - a.ts);
+}
+function renderBell() {
+  const panel = $('#bell-panel'); if (!panel) return;
+  const items = lateNotifs();
+  $('#bell-dot').classList.toggle('hidden', !items.length);
+  panel.innerHTML = items.length ? `<div class="w-full text-left space-y-2 max-h-80 overflow-auto">`
+    + `<p class="text-sm font-medium px-1">Late arrivals today (${items.length})</p>`
+    + items.map(x => `<div class="card p-3"><div class="text-sm font-medium">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div>`
+      + `<div class="muted text-xs mt-0.5">${fmtTime(x.ts)} · Scheduled ${fmtMin(x.sin)} · Late by ${x.mins} min</div>`
+      + `<div class="text-sm mt-1">${x.note ? `“${esc(x.note)}”` : '<span class="muted">No reason given.</span>'}</div></div>`).join('')
+    + `</div>` : '<p class="muted text-sm">No notifications</p>';
+}
 function renderDash() {
   $('#d-biz').textContent = sess.business; $('#d-av').textContent = initials(sess.name);
   $('#d-hi').textContent = 'Hello, ' + sess.name.split(' ')[0] + '!';
@@ -277,22 +385,42 @@ function renderDash() {
   const present = [...new Set(t.filter(x => x.type === 'in' && EMP[x.id] && EMP[x.id].active).map(x => x.id))];
   const late = present.filter(id => {
     const d = new Date(t.find(x => x.id === id && x.type === 'in').ts);
-    return d.getHours() * 60 + d.getMinutes() > startOf(id) + 15; // 15-min grace after scheduled start
+    return d.getHours() * 60 + d.getMinutes() > startOf(id) + GRACE; // 15-min grace after scheduled start
   }).length;
   const total = activeIds().length;
   const absent = activeIds().filter(id => startOf(id) < 1e8 && !present.includes(id)).length;
   renderChart([present.length - late, late, absent]);
-  $('#stats').innerHTML = [['Active employees', total], ['Present today', present.length], ['Absent today', absent], ['Late today', late]]
+  $('#stats').innerHTML = [['Active staff', total], ['Present today', present.length], ['Absent today', absent], ['Late today', late]]
     .map(([l, n]) => `<div class="card p-4"><div class="text-2xl font-semibold">${n}</div><div class="muted text-sm mt-1">${l}</div></div>`).join('');
   const BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], off: ['b-muted', 'Day off'] };
   $('#rows').innerHTML = Object.entries(EMP).filter(([, e]) => e.active).map(([id, e]) => {
     const f = t.find(x => x.id === id && x.type === 'in'); // first time in today
     const d = f && new Date(f.ts);
-    const st = !f ? (startOf(id) > 1e8 ? 'off' : 'absent') : d.getHours() * 60 + d.getMinutes() > startOf(id) + 15 ? 'late' : 'present';
-    return `<tr class="border-t hair"><td class="py-2">${id}</td><td>${esc(e.name)}</td><td>${f ? fmtTime(f.ts) : '—'}</td><td><span class="badge ${BADGE[st][0]}">${BADGE[st][1]}</span></td></tr>`;
+    const st = !f ? (startOf(id) > 1e8 ? 'off' : 'absent') : d.getHours() * 60 + d.getMinutes() > startOf(id) + GRACE ? 'late' : 'present';
+    return `<tr class="border-t hair"><td class="py-2">${id}</td><td>${esc(e.name)}${st === 'late' && f.note ? `<div class="muted text-xs" style="max-width:12rem">“${esc(f.note)}”</div>` : ''}</td><td>${f ? fmtTime(f.ts) : '—'}</td><td><span class="badge ${BADGE[st][0]}">${BADGE[st][1]}</span></td></tr>`;
   }).join('');
+  $('#stat-late').textContent = late;
+  renderBell(); // keep the bell dot in step with today's late arrivals
 }
-$('#bell').addEventListener('click', () => toast('No new notifications.'));
+$('#bell').addEventListener('click', e => {
+  e.stopPropagation();
+  const panel = $('#bell-panel');
+  if (panel.classList.contains('hidden')) renderBell(); // fresh late list + reasons each time it opens
+  panel.classList.toggle('hidden');
+  $('#bell').setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
+});
+document.addEventListener('click', e => {
+  const panel = $('#bell-panel');
+  if (!panel || panel.classList.contains('hidden')) return;
+  if (e.target.closest('#bell-panel') || e.target.closest('#bell')) return;
+  panel.classList.add('hidden');
+  $('#bell').setAttribute('aria-expanded', 'false');
+});
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const panel = $('#bell-panel');
+  if (panel && !panel.classList.contains('hidden')) { panel.classList.add('hidden'); $('#bell').setAttribute('aria-expanded', 'false'); }
+});
 
 /* ---------- Chart: last 7 days, stacked bars (inline SVG, no library) ---------- */
 function renderChart(todayData) {
@@ -311,7 +439,13 @@ function renderChart(todayData) {
   });
   $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" role="img" aria-label="Attendance over the last 7 days">${s}</svg>`;
 }
-$('#reset').addEventListener('click', () => {
+$('#reset').addEventListener('click', async () => {
+  const ok = await confirmCard({
+    title: 'Reset demo data?',
+    msg: 'This restores the sample staff, schedules, attendance logs, payroll and deductions, and removes anything you changed. This can’t be undone.',
+    ok: 'Reset all data', tone: 'danger',
+  });
+  if (!ok) return;
   Object.keys(SCH).forEach(k => delete SCH[k]); saveSch();
   Object.keys(EMP).forEach(k => delete EMP[k]); Object.assign(EMP, defaultEmps()); saveEmps();
   resetPay(); pSel.clear(); hSel = null;
@@ -331,14 +465,14 @@ function renderQR() {
   g.innerHTML = Object.entries(EMP).filter(([, e]) => e.active).map(([id, e]) => `<div class="card p-3 text-center"><div class="max-w-[9rem] mx-auto">${qrSvg(id)}</div><div class="font-medium text-sm mt-2">${esc(e.name)}</div><div class="muted text-xs">${id}</div></div>`).join('');
 }
 
-/* ---------- Employees page ---------- */
+/* ---------- Staff page ---------- */
 const fmtDate = s => new Date(s + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 $('#f-shift').innerHTML = SHIFTS.map((s, i) => `<option value="${i}">${s[1]}</option>`).join('');
 
-const eSel = new Set(), cardOk = id => !!EMP[id] && EMP[id].active && !EMP[id].draft; // ID cards: active employees with completed setup
-function renderEmployees() {
+const eSel = new Set(), cardOk = id => !!EMP[id] && EMP[id].active && !EMP[id].draft; // ID cards: active staff with completed setup
+function renderStaff() {
   const all = Object.entries(EMP), act = all.filter(([, e]) => e.active).length, dr = all.filter(([, e]) => e.draft).length;
-  $('#emp-stats').innerHTML = [['Total employees', all.length], ['Active employees', act], ['Inactive employees', all.length - act - dr], ['Draft employees', dr]]
+  $('#emp-stats').innerHTML = [['Total staff', all.length], ['Active staff', act], ['Inactive staff', all.length - act - dr], ['Draft staff', dr]]
     .map(([l, n]) => `<div class="card p-4"><div class="text-2xl font-semibold">${n}</div><div class="muted text-sm mt-1">${l}</div></div>`).join('');
   const q = $('#e-q').value.trim().toLowerCase(), pf = $('#e-pos').value, sf = $('#e-st').value;
   const rows = all.filter(([id, e]) => (!q || `${id} ${e.name} ${e.pos}`.toLowerCase().includes(q)) && (!pf || e.pos === pf) && (!sf || (e.draft ? 'draft' : e.active ? 'active' : 'inactive') === sf));
@@ -347,15 +481,15 @@ function renderEmployees() {
     <td class="whitespace-nowrap">${e.photo ? `<img class="avatar mr-2 align-middle inline-block" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs mr-2 align-middle" style="background:var(--bg)">${initials(e.name)}</span>`}${id}</td>
     <td>${esc(e.name)}</td><td>${esc(e.pos)}</td><td class="whitespace-nowrap">${e.rate > 0 ? num(e.rate) : '—'}</td><td class="whitespace-nowrap">${esc(e.contact || '—')}</td><td class="whitespace-nowrap">${fmtDate(e.hired)}</td>
     <td><span class="badge ${e.draft ? 'b-warn' : e.active ? 'b-ok' : 'b-err'}">${e.draft ? 'Draft' : e.active ? 'Active' : 'Inactive'}</span></td>
-    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-card="${id}" ${cardOk(id) ? '' : 'disabled title="Activate the employee to issue an ID card"'}>ID card</button> <button class="ghost !py-1 !px-2 text-xs" data-edit="${id}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-del="${id}">Delete</button></td></tr>`).join('')
-    : '<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">No employees match your filters.</td></tr>';
-  $('#emp-count').textContent = `Showing ${rows.length} of ${all.length} employees`;
+    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-card="${id}" ${cardOk(id) ? '' : 'disabled title="Activate the staff to issue an ID card"'}>ID card</button> <button class="ghost !py-1 !px-2 text-xs" data-edit="${id}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-del="${id}">Delete</button></td></tr>`).join('')
+    : '<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">No staff match your filters.</td></tr>';
+  $('#emp-count').textContent = `Showing ${rows.length} of ${all.length} staff`;
   $('#e-all').checked = rows.length > 0 && rows.every(([id]) => eSel.has(id));
 }
 $('#e-pos').innerHTML = '<option value="">All positions</option>' + POSITIONS.map(p => `<option value="${p}">${p}</option>`).join(''); // only Kitchen Staff and Dine Staff
-['#e-q', '#e-pos', '#e-st'].forEach(s => $(s).addEventListener('input', renderEmployees));
+['#e-q', '#e-pos', '#e-st'].forEach(s => $(s).addEventListener('input', renderStaff));
 
-/* ---------- Add / edit employee wizard ---------- */
+/* ---------- Add / edit staff wizard ---------- */
 const LABELS = { 1: 'Continue to Review →', 2: 'Generate ID & save' };
 const modal = $('#emp-modal');
 let editId = null, W = null;
@@ -363,7 +497,7 @@ const nextEmpId = () => 'EMP-' + pad(Math.max(0, ...Object.keys(EMP).map(k => +k
 const peso = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
 
 function paintPhoto() {
-  $('#p-prev').innerHTML = W.photo ? `<img src="${W.photo}" alt="Employee photo">` : 'No photo';
+  $('#p-prev').innerHTML = W.photo ? `<img src="${W.photo}" alt="Staff photo">` : 'No photo';
   $('#p-rm').disabled = !W.photo;
 }
 
@@ -372,11 +506,11 @@ function setWiz(n) {
   $$('#emp-form [data-step]').forEach(s => s.classList.toggle('hidden', +s.dataset.step !== n));
   $$('#emp-form [data-dot]').forEach(d => { const k = +d.dataset.dot; d.classList.toggle('on', k <= n); d.textContent = k < n ? '✓' : k; });
   $$('#emp-form [data-lbl]').forEach(l => l.style.color = +l.dataset.lbl === n ? 'var(--text)' : '');
-  $('#emp-sub').textContent = ['Fill in the details below to add a new employee.', 'Check everything, then generate the employee ID.'][n - 1];
+  $('#emp-sub').textContent = ['Fill in the details below to add a new staff.', 'Check everything, then generate the staff ID.'][n - 1];
   $('#f-back').classList.toggle('hidden', n === 1);
   $('#f-next').textContent = LABELS[n];
   if (n === 2) {
-    $('#f-sum').innerHTML = [['Employee ID', W.id], ['Name', W.name], ['Position', W.pos], ['Rate per hour', peso(W.rate)], ['Contact number', W.contact], ['Date hired', fmtDate(W.hired)]]
+    $('#f-sum').innerHTML = [['Staff ID', W.id], ['Name', W.name], ['Position', W.pos], ['Rate per hour', peso(W.rate)], ['Contact number', W.contact], ['Date hired', fmtDate(W.hired)]]
       .map(([k, v]) => `<div class="flex justify-between border-b hair pb-2"><dt class="muted">${k}</dt><dd>${esc(v)}</dd></div>`).join('');
     $('#f-idbig').textContent = W.id;
     $('#f-qr').innerHTML = typeof qrcode === 'undefined' ? '' : qrSvg(W.id);
@@ -396,7 +530,7 @@ function openEmp(id) {
   W = { step: 1, id: id || nextEmpId(), photo: e.photo || '' };
   const opts = [...new Set([...POSITIONS, ...(e.pos ? [e.pos] : [])])];
   $('#f-pos').innerHTML = '<option value="">Select position</option>' + opts.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-  $('#emp-title').textContent = id ? `Edit ${id}` : 'Add Employee';
+  $('#emp-title').textContent = id ? `Edit ${id}` : 'Add Staff';
   $('#f-id').value = W.id; $('#f-name').value = e.name; $('#f-pos').value = e.pos; $('#f-rate').value = e.rate;
   $('#f-hired').value = e.hired; $('#f-shift').value = e.shift; $('#f-contact').value = e.contact || '';
   paintPhoto(); setWiz(1);
@@ -412,8 +546,8 @@ function saveEmp(draft) {
     contact: W.contact, shift: +$('#f-shift').value,
     active: draft ? false : (editId ? old.active !== false || old.draft === true : true),
   });
-  saveEmps(); closeEmp(); renderEmployees();
-  toast(draft ? `Draft saved as ${W.id}.` : editId ? 'Employee updated.' : `Employee added as ${W.id}.`);
+  saveEmps(); closeEmp(); renderStaff();
+  toast(draft ? `Draft saved as ${W.id}.` : editId ? 'Staff updated.' : `Staff added as ${W.id}.`);
 }
 
 $('#add-emp').addEventListener('click', () => openEmp());
@@ -443,25 +577,29 @@ function squareThumb(src, w, h) { // 256px square JPEG keeps localStorage small
   return c.toDataURL('image/jpeg', .8);
 }
 
-$('#emp-rows').addEventListener('click', e => {
+$('#emp-rows').addEventListener('click', async e => {
   const k = e.target.closest('[data-csel]'); if (k) { k.checked ? eSel.add(k.dataset.csel) : eSel.delete(k.dataset.csel); return; }
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.card) { if (!b.disabled) openCard(b.dataset.card); return; }
-  if (b.dataset.edit) EMP[b.dataset.edit].draft ? openEmp(b.dataset.edit) : openEdit(b.dataset.edit); // drafts resume setup; existing employees get the edit form
-  if (b.dataset.del && confirm(`Delete ${EMP[b.dataset.del].name} (${b.dataset.del})? This can’t be undone.`)) {
-    delete EMP[b.dataset.del]; saveEmps(); renderEmployees(); toast('Employee deleted.');
+  if (b.dataset.edit) EMP[b.dataset.edit].draft ? openEmp(b.dataset.edit) : openEdit(b.dataset.edit); // drafts resume setup; existing staff get the edit form
+  if (b.dataset.del) {
+    const id = b.dataset.del, e = EMP[id];
+    if (!e) return;
+    const ok = await confirmCard({ title: 'Delete staff?', msg: `Delete ${e.name} (${id})? Attendance, schedules and payroll history for this staff will be removed. This can’t be undone.`, ok: 'Delete', tone: 'danger' });
+    if (ok) { delete EMP[id]; eSel.delete(id); saveEmps(); renderStaff(); toast('Staff deleted.'); }
+    return;
   }
 });
-/* ---------- Edit existing employee (ID, hire date and face registration are read-only) ---------- */
+/* ---------- Edit existing staff (ID, hire date and face registration are read-only) ---------- */
 const eModal = $('#edit-modal');
 let xId = null, xPhoto = '';
 function paintX() {
-  $('#x-prev').innerHTML = xPhoto ? `<img src="${xPhoto}" alt="Employee photo" class="w-full h-full object-cover">` : esc(initials(EMP[xId].name));
+  $('#x-prev').innerHTML = xPhoto ? `<img src="${xPhoto}" alt="Staff photo" class="w-full h-full object-cover">` : esc(initials(EMP[xId].name));
   $('#x-rm').disabled = !xPhoto;
 }
 function openEdit(id) {
   xId = id; const e = EMP[id]; xPhoto = e.photo || '';
-  $('#x-info').innerHTML = [['Employee ID', id], ['Date hired', fmtDate(e.hired)]]
+  $('#x-info').innerHTML = [['Staff ID', id], ['Date hired', fmtDate(e.hired)]]
     .map(([k, v]) => `<div><dt class="muted text-xs">${k}</dt><dd class="mt-0.5">${esc(v)}</dd></div>`).join('');
   const opts = [...new Set([...POSITIONS, e.pos])];
   $('#x-pos').innerHTML = opts.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
@@ -493,17 +631,17 @@ $('#x-form').addEventListener('submit', e => {
     ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: ph,
     active: $('#x-status').value === 'active', photo: xPhoto
   });
-  saveEmps(); closeEdit(); renderEmployees(); toast('Employee updated.');
+  saveEmps(); closeEdit(); renderStaff(); toast('Staff updated.');
 });
 
 /* ---------- ID cards ---------- */
-const bizName = () => (typeof sess !== 'undefined' && sess && sess.business) || 'InfusoPay Café';
+const bizName = () => (typeof sess !== 'undefined' && sess && sess.business) || 'InfusoPay';
 const cardFront = id => {
   const e = EMP[id]; return `<div class="idc"><div class="idc-h">${esc(bizName())}</div><div class="idc-b">
   <div class="idc-p">${e.photo ? `<img src="${e.photo}" alt="">` : esc(initials(e.name))}</div>
   <div class="idc-t"><div class="idc-n">${esc(e.name)}</div><div class="idc-s">${esc(e.pos)}</div><div class="idc-i">${id}</div></div>
   <div class="idc-q">${typeof qrcode === 'undefined' ? '' : qrSvg(id)}</div></div>
-  <div class="idc-f"><span>Employee ID card</span><span>Scan for attendance</span></div></div>`;
+  <div class="idc-f"><span>Staff ID card</span><span>Scan for attendance</span></div></div>`;
 };
 const cardBack = id => `<div class="idc"><div class="idc-h">${esc(bizName())}</div><div class="idc-bk">
   <p>This card is the property of ${esc(bizName())}. It is non-transferable and must be shown when requested.</p>
@@ -514,8 +652,8 @@ function openCard(id) { cardId = id; $('#cm-body').innerHTML = cardFront(id) + c
 const closeCard = () => { cardModal.classList.add('hidden'); cardModal.classList.remove('flex'); };
 function printCards(ids) {
   const ok = ids.filter(cardOk);
-  if (!ok.length) { toast('ID cards are only issued to active employees with completed setup.', 'err'); return; }
-  if (ok.length < ids.length) toast(`Skipped ${ids.length - ok.length} inactive or draft employee${ids.length - ok.length === 1 ? '' : 's'}.`, 'err');
+  if (!ok.length) { toast('ID cards are only issued to active staff with completed setup.', 'err'); return; }
+  if (ok.length < ids.length) toast(`Skipped ${ids.length - ok.length} inactive or draft staff${ids.length - ok.length === 1 ? '' : 's'}.`, 'err');
   $('#card-sheet').innerHTML = ok.map(id => cardFront(id) + cardBack(id)).join('');
   window.print();
 }
@@ -523,7 +661,7 @@ addEventListener('afterprint', () => { $('#card-sheet').innerHTML = ''; });
 $('#cm-x').addEventListener('click', closeCard); $('#cm-close').addEventListener('click', closeCard);
 addEventListener('keydown', e => { if (e.key === 'Escape') closeCard(); });
 $('#cm-print').addEventListener('click', () => printCards([cardId]));
-$('#print-cards').addEventListener('click', () => eSel.size ? printCards([...eSel]) : toast('Select employees first.', 'err'));
+$('#print-cards').addEventListener('click', () => eSel.size ? printCards([...eSel]) : toast('Select staff first.', 'err'));
 $('#e-all').addEventListener('change', e => { $$('#emp-rows [data-csel]').forEach(k => { k.checked = e.target.checked; e.target.checked ? eSel.add(k.dataset.csel) : eSel.delete(k.dataset.csel); }); });
 
 /* ---------- Schedules: page ---------- */
@@ -544,7 +682,7 @@ function renderSchedule() {
   const staff = Object.entries(EMP).filter(([, e]) => e.active && !e.draft);
   const q = $('#s-q').value.trim().toLowerCase(), pf = $('#s-pos').value;
   const rows = staff.filter(([id, e]) => (!q || `${id} ${e.name}`.toLowerCase().includes(q)) && (!pf || e.pos === pf));
-  $('#s-head').innerHTML = '<tr><th class="text-left font-normal muted py-2 sticky left-0 z-10" style="background:var(--surface)">Employee</th>' + days.map(d => {
+  $('#s-head').innerHTML = '<tr><th class="text-left font-normal muted py-2 sticky left-0 z-10" style="background:var(--surface)">Staff</th>' + days.map(d => {
     const t = dkey(d) === todayK;
     return `<th class="font-normal text-center py-1"><div class="${t ? 'font-medium' : 'muted'}">${d.toLocaleDateString('en-US', { weekday: 'short' })}</div><div class="text-xs mt-0.5 ${t ? 'inline-grid place-items-center w-6 h-6 rounded-full' : 'muted'}" ${t ? 'style="background:var(--accent);color:var(--ink)"' : ''}>${d.getDate()}</div></th>`;
   }).join('') + '</tr>';
@@ -554,7 +692,7 @@ function renderSchedule() {
     const s = getSched(id, d), past = d < t0;
     if (d < new Date(e.hired + 'T00:00')) return '<td class="p-0 align-top min-w-[112px]"><div class="sc muted" style="background:transparent;border-left-color:transparent">Not yet hired</div></td>';
     return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${s.in != null ? 'work' : 'off'}${past ? ' sc-lock' : ''}" ${past ? 'disabled title="Past schedules can’t be edited"' : ''} data-id="${id}" data-d="${dkey(d)}"><b>${s.in != null ? 'Scheduled' : 'Day off'}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
-  }).join('') + '</tr>').join('') : '<tr><td colspan="8" class="py-8 text-center muted">No employees match your filters.</td></tr>';
+  }).join('') + '</tr>').join('') : '<tr><td colspan="8" class="py-8 text-center muted">No staff match your filters.</td></tr>';
 }
 $('#s-prev').addEventListener('click', () => { wk = addDays(wk, -7); renderSchedule(); });
 $('#s-next').addEventListener('click', () => { wk = addDays(wk, 7); renderSchedule(); });
@@ -568,9 +706,9 @@ function openSch(id, key) {
   if (key < dkey(new Date())) { toast('Past schedules can’t be edited.', 'err'); return; }
   const d = new Date(key + 'T00:00'), s = getSched(id, d), e = EMP[id];
   sEdit = { id, key };
-  $('#s-info').innerHTML = [['Employee', esc(e.name)], ['Date', d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })]]
+  $('#s-info').innerHTML = [['Staff', esc(e.name)], ['Date', d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })]]
     .map(([k, v]) => `<div class="flex justify-between"><dt class="muted">${k}</dt><dd>${v}</dd></div>`).join('');
-  const p = SHIFT_TYPES[TYPE_BY_SHIFT[e.shift] || 'morning']; // default times come from the employee's default shift
+  const p = SHIFT_TYPES[TYPE_BY_SHIFT[e.shift] || 'morning']; // default times come from the staff's default shift
   $('#s-status').value = s.in != null ? 'work' : 'off';
   $('#s-in').value = toTime(s.in ?? p.in); $('#s-out').value = toTime(s.out ?? p.out);
   paintWork(); sModal.classList.remove('hidden'); sModal.classList.add('flex');
@@ -594,7 +732,7 @@ $('#s-form').addEventListener('submit', e => {
 });
 
 /* ---------- Attendance records ---------- */
-const PER_PAGE = 10, GRACE = 15;
+const PER_PAGE = 10;
 let aMode = 'today', aPage = 1;
 const hsh = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const fmtHM = m => { m = Math.max(0, Math.round(m)); const h = Math.floor(m / 60), mm = m % 60; return h ? `${h}h${mm ? ' ' + String(mm).padStart(2, '0') + 'm' : ''}` : mm ? mm + 'm' : '0h'; };
@@ -604,9 +742,13 @@ const minOf = t => { const q = new Date(t); return q.getHours() * 60 + q.getMinu
 
 function attRecord(id, d) { // up to 4 scans a day: time in, break out, break in, time out
   const key = dkey(d), s = getSched(id, d), isToday = key === dkey(new Date()), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0 };
+  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0, note: '' };
   if (s.in == null) return { ...r, st: s.t };
-  if (isToday) r.t = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key).slice(0, 4).map(x => minOf(x.ts));
+  if (isToday) {
+    const day = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key).slice(0, 4);
+    r.t = day.map(x => minOf(x.ts));
+    r.note = (day.find(x => x.type === 'in') || {}).note || ''; // late reason typed on Confirm Attendance
+  }
   else if (hsh(id + key) % 100 >= 7) { // demo history: deterministic, so the same day always shows the same record
     const tin = s.in + (hsh(key + id) % 35) - 12, tout = s.out + (hsh(id + 'o' + key) % 30) - 12;
     const bo = Math.round((s.in + s.out) / 2) + (hsh(id + 'b' + key) % 21) - 10, bi = bo + 50 + (hsh(key + 'i' + id) % 21); // break of 50–70 min around mid-shift
@@ -629,7 +771,7 @@ function attDates() {
   const t = new Date(); t.setHours(0, 0, 0, 0);
   return aMode === 'date' && $('#a-date').value ? [new Date($('#a-date').value + 'T00:00')] : [t];
 }
-const A_COLS = [['ID'], ['Employee'], ['Scheduled'], ['Time In', 'Shift start'], ['Time Out', 'Break start'], ['Time In', 'Break end'], ['Time Out', 'Shift end'], ['Hours Worked'], ['Status']];
+const A_COLS = [['ID'], ['Staff'], ['Scheduled'], ['Time In', 'Shift start'], ['Time Out', 'Break start'], ['Time In', 'Break end'], ['Time Out', 'Shift end'], ['Hours Worked'], ['Status']];
 $('#a-pos').innerHTML = '<option value="">All Positions</option>' + POSITIONS.map(p => `<option value="${p}">${p}</option>`).join(''); // only Kitchen Staff and Dine Staff
 function renderAttendance() {
   const todayK = dkey(new Date());
@@ -653,7 +795,7 @@ function renderAttendance() {
     <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}${schedChanged(r.id, r.d) ? '<div class="text-xs" style="color:var(--warn)" title="This day’s schedule was edited. Status and hours follow the updated schedule.">Schedule updated</div>' : ''}</td>
     ${[0, 1, 2, 3].map(i => `<td class="pr-3 whitespace-nowrap">${r.t[i] != null ? fmtMin(r.t[i]) : '—'}</td>`).join('')}
     <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${r.t.length ? fmtHM(r.hrs) : '—'}</td>
-    <td><span class="badge ${b[0]}">${b[1]}</span></td></tr>`;
+    <td><span class="badge ${b[0]}">${b[1]}</span>${r.st === 'late' && r.note ? `<div class="text-xs mt-1" style="max-width:12rem">“${esc(r.note)}”</div>` : ''}</td></tr>`;
   }).join('') : `<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
   $('#a-count').textContent = recs.length ? `Showing ${from + 1} to ${from + part.length} of ${recs.length} records` : 'Showing 0 records';
   const nums = []; for (let p = Math.max(1, aPage - 2); p <= Math.min(pages, Math.max(aPage + 2, 5)); p++) nums.push(p);
@@ -672,7 +814,7 @@ $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefau
    Automatic: Tardiness is DERIVED from attendRecord() (Attendance + Schedule), never stored,
    so it always matches the Attendance page. Manual: Cash Advance, Uniform Fee, Lost ID, Other are stored.
    Absences are NOT deducted: payroll pays only hours worked (avoids double-deducting). */
-const DEF_RATE = 80, MAX_DAYS = 92; // fallback ₱/hr for employees without a rate; max range
+const DEF_RATE = 80, MAX_DAYS = 92; // fallback ₱/hr for staff without a rate; max range
 const DED_TYPES = { tardiness: 'Tardiness', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
 const DED_MANUAL = ['tardiness', 'advance', 'uniform', 'lostid']; // fixed types shown in the filter and in Add deduction (Tardiness is also generated automatically); "Other" is added last and lets the admin type a new one
 const DED_BADGE = { tardiness: 'b-err', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
@@ -682,7 +824,7 @@ const dedName = t => DED_TYPES[t] || 'Other'; // safe label lookup (call esc() w
 const rateOf = id => EMP[id]?.rate > 0 ? EMP[id].rate : DEF_RATE;
 const dedAmt = (id, mins) => Math.round(rateOf(id) / 60 * mins * 100) / 100; // hourly rate ÷ 60 × minutes
 const num = n => Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const seedDeds = () => [['EMP-002', 'advance', 450, 'Salary advance', 1], ['EMP-005', 'uniform', 100, 'Uniform fee', 2], ['EMP-010', 'lostid', 150, 'Lost ID', 3], ['EMP-004', 'advance', 300, 'Salary advance', 4], ['EMP-007', 'other', 200, 'Approved deduction', 6]]
+const seedDeds = () => [['EMP-002', 'advance', 450, 'Wages advance', 1], ['EMP-005', 'uniform', 100, 'Uniform fee', 2], ['EMP-010', 'lostid', 150, 'Lost ID', 3], ['EMP-004', 'advance', 300, 'Wages advance', 4], ['EMP-007', 'other', 200, 'Approved deduction', 6]]
   .map(([id, type, amount, remarks, ago], i) => ({ k: 'm-' + (i + 1), id, type, amount, remarks, date: dkey(addDays(new Date(), -ago)) }));
 const DED = store.get('deds', null) || seedDeds();
 const saveDed = () => store.set('deds', DED);
@@ -742,7 +884,7 @@ function renderDeductions() {
   const [from, to] = dedRange(), fk = dkey(from), tk = dkey(to);
   if (custom) { if (!$('#d-from').value) $('#d-from').value = fk; if (!$('#d-to').value) $('#d-to').value = tk; }
   const curE = $('#d-emp').value, emps = Object.entries(EMP).filter(([, e]) => !e.draft);
-  $('#d-emp').innerHTML = '<option value="">All Employees</option>' + emps.map(([id, e]) => `<option value="${id}">${esc(e.name)}</option>`).join('');
+  $('#d-emp').innerHTML = '<option value="">All Staff</option>' + emps.map(([id, e]) => `<option value="${id}">${esc(e.name)}</option>`).join('');
   $('#d-emp').value = EMP[curE] ? curE : '';
   const ef = $('#d-emp').value, tf = $('#d-type').value, q = $('#d-q').value.trim().toLowerCase();
   const all = [...autoDeds(from, to), ...DED.filter(x => x.date >= fk && x.date <= tk).map(x => ({ ...x, auto: false }))]
@@ -788,7 +930,7 @@ const dModal = $('#ded-modal');
 let dEdit = null;
 function openDed(k) {
   dEdit = k || null; const r = k ? DED.find(x => x.k === k) : null;
-  $('#dm-emp').innerHTML = '<option value="">Select employee</option>' + Object.entries(EMP).filter(([id, e]) => (e.active && !e.draft) || id === r?.id).map(([id, e]) => `<option value="${id}">${id} · ${esc(e.name)}</option>`).join('');
+  $('#dm-emp').innerHTML = '<option value="">Select staff</option>' + Object.entries(EMP).filter(([id, e]) => (e.active && !e.draft) || id === r?.id).map(([id, e]) => `<option value="${id}">${id} · ${esc(e.name)}</option>`).join('');
   $('#dm-title').textContent = r ? 'Edit deduction' : 'Add deduction';
   $('#dm-emp').value = r?.id || ''; $('#dm-type').value = r?.type || 'advance'; $('#dm-date').value = r?.date || dkey(new Date()); $('#dm-date').max = dkey(new Date());
   $('#dm-amt').value = r?.amount ?? ''; $('#dm-rem').value = r?.remarks || ''; $('#dm-other').value = ''; paintOther();
@@ -816,7 +958,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape') closeDed(); });
 $('#dm-form').addEventListener('submit', e => {
   e.preventDefault();
   const id = $('#dm-emp').value, amount = Math.round(parseFloat($('#dm-amt').value) * 100) / 100, date = $('#dm-date').value;
-  if (!id || !date || !(amount > 0)) { toast('Select an employee, date and an amount above zero.', 'err'); return; }
+  if (!id || !date || !(amount > 0)) { toast('Select a staff, date and an amount above zero.', 'err'); return; }
   if (date > dkey(new Date())) { toast('The date can’t be in the future.', 'err'); return; }
   const old = dEdit ? DED.find(x => x.k === dEdit) : null;
   if (old && dedState(old.id, old.date) === 'locked') { toast('This deduction belongs to a processed payroll and can’t be edited.', 'err'); return; }
@@ -832,13 +974,15 @@ $('#dm-form').addEventListener('submit', e => {
     : stt === 'open' ? `Saved. It will be included when payroll is generated for ${nm}.`
     : `Saved. ${nm}’s payroll now shows the new deduction.`) + (back ? ' The approved payroll was sent back for review.' : ''));
 });
-$('#d-rows').addEventListener('click', e => {
+$('#d-rows').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.dedit) openDed(b.dataset.dedit);
   if (b.dataset.ddel) {
     const r = DED.find(x => x.k === b.dataset.ddel); if (!r) return;
     if (dedState(r.id, r.date) === 'locked') { toast('This pay period is already processed, so the deduction can’t be deleted.', 'err'); return; }
-    if (!confirm('Delete this deduction? This can’t be undone.')) return;
+    const nm = EMP[r.id] ? EMP[r.id].name : r.id, dt = dedName(r.type);
+    const ok = await confirmCard({ title: 'Delete deduction?', msg: `Delete the ${dt} deduction (${peso(r.amount)}) for ${nm}? This can’t be undone.`, ok: 'Delete', tone: 'danger' });
+    if (!ok) return;
     DED.splice(DED.indexOf(r), 1);
     const back = reopenIfApproved(r.id, r.date);
     saveDed(); renderDeductions();
@@ -934,7 +1078,7 @@ function renderPayCur() {
   $('#p-rows').innerHTML = part.length ? part.map(r => payRowHtml(r, true)).join('') : '<tr class="border-t hair"><td colspan="11" class="py-8 text-center muted">No payroll records match your filters.</td></tr>';
   $('#p-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#p-pager').innerHTML = dpager(pPage, pages);
-  $('#p-stats').innerHTML = [['Total employees', rows.length], ['Total gross pay', peso(sum('gross'))], ['Total deductions', peso(sum('ded'))], ['Total net pay', peso(sum('net'))]]
+  $('#p-stats').innerHTML = [['Total staff', rows.length], ['Total gross pay', peso(sum('gross'))], ['Total deductions', peso(sum('ded'))], ['Total net pay', peso(sum('net'))]]
     .map(([l, v]) => `<div class="card p-4"><div class="text-2xl font-semibold">${v}</div><div class="muted text-sm mt-1">${l}</div></div>`).join('');
 }
 function renderPayHis() {
@@ -960,12 +1104,30 @@ $('#hd-pager').addEventListener('click', e => { const b = e.target.closest('butt
 $('#p-all').addEventListener('change', e => { $$('#p-rows [data-sel]').forEach(c => { c.checked = e.target.checked; e.target.checked ? pSel.add(c.dataset.sel) : pSel.delete(c.dataset.sel); }); });
 $('#p-gen').addEventListener('click', () => {
   const s = curStart(), rs = payRows(s).filter(r => r.st === 'none'); rs.forEach(r => PAY[pKey(s, r.id)] = 'draft'); savePay(); renderPayroll();
-  toast(rs.length ? `Payroll generated as draft for ${rs.length} employee${rs.length === 1 ? '' : 's'}.` : 'Payroll is already generated for this period.');
+  toast(rs.length ? `Payroll generated as draft for ${rs.length} staff${rs.length === 1 ? '' : 's'}.` : 'Payroll is already generated for this period.');
 });
-$('#p-adv').addEventListener('click', () => {
-  const s = curStart(), A = autoDeds(s, weekEnd(s)); let n = 0; pSel.forEach(id => { if (payAdv(s, id, A)) n++; });
-  savePay(); renderPayroll();
-  toast(pSel.size ? `${n} payroll record${n === 1 ? '' : 's'} moved to the next step.` : 'Select employees first.', pSel.size ? 'ok' : 'err');
+$('#p-adv').addEventListener('click', async () => {
+  const s = curStart(), A = autoDeds(s, weekEnd(s));
+  if (!pSel.size) { toast('Select staff first.', 'err'); return; }
+  const rows = [...pSel].filter(id => PAY_NEXT[pStatus(s, id)]);
+  if (!rows.length) { toast('Selected records have no next step.', 'err'); return; }
+  // Group by next step so one card covers the bulk approve / process / release.
+  const by = {};
+  rows.forEach(id => { const n = PAY_NEXT[pStatus(s, id)][0]; (by[n] = by[n] || []).push(id); });
+  const [[next, ids]] = Object.entries(by).sort((a, b) => b[1].length - a[1].length);
+  const label = { review: 'Approve', approved: 'Process payroll for', processed: 'Release payslips for' }[next] || PAY_NEXT[PAY[pKey(s, ids[0])]][1];
+  const extra = Object.keys(by).length > 1 ? ` (+${rows.length - ids.length} more at other steps)` : '';
+  const names = ids.slice(0, 3).map(id => EMP[id].name).join(', ') + (ids.length > 3 ? ` +${ids.length - 3} more` : '');
+  const ok = await confirmCard({
+    title: next === 'review' ? 'Approve payroll?' : next === 'approved' ? 'Process payroll?' : 'Release payslips?',
+    msg: `${label} ${ids.length} staff (${names})${extra} for ${fmR(s)}?${next === 'approved' ? ' Processing locks the figures.' : next === 'processed' ? ' Staff will see the final amounts.' : ''}`,
+    ok: next === 'review' ? `Approve ${ids.length}` : next === 'approved' ? `Process ${ids.length}` : `Release ${ids.length}`,
+    tone: next === 'review' || next === 'processed' ? 'ok' : 'warn',
+  });
+  if (!ok) return;
+  let n = 0; ids.forEach(id => { if (payAdv(s, id, A)) n++; });
+  pSel.clear(); savePay(); renderPayroll();
+  toast(`${n} payroll record${n === 1 ? '' : 's'} moved to the next step.`);
 });
 $('#h-rows').addEventListener('click', e => { const b = e.target.closest('[data-hp]'); if (b) { hSel = b.dataset.hp; hPage = 1; renderPayroll(); } });
 $('#hd-back').addEventListener('click', () => { hSel = null; renderPayroll(); });
@@ -984,8 +1146,21 @@ function openPay(id, s, slip, ro) {
 }
 const closePay = () => { pModal.classList.add('hidden'); pModal.classList.remove('flex'); };
 $('#pm-x').addEventListener('click', closePay); $('#pm-close').addEventListener('click', closePay);
-addEventListener('keydown', e => { if (e.key === 'Escape') closePay(); });
-$('#pm-act').addEventListener('click', () => { payAdv(pOpen.s, pOpen.id); savePay(); const ns = pStatus(pOpen.s, pOpen.id); toast(ns === 'released' ? `${EMP[pOpen.id].name}: Payslip released.` : `${EMP[pOpen.id].name}: ${PAY_ST[ns][1]}.`); closePay(); renderPayroll(); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !cfResolve) closePay(); });
+$('#pm-act').addEventListener('click', async () => {
+  const { id, s } = pOpen, st = pStatus(s, id), c = payGet(id, s);
+  const nx = PAY_NEXT[st]; if (!nx) return;
+  const cfg = {
+    review: { title: 'Approve payroll?', msg: `${EMP[id].name}: approve ${peso(c.net)} net pay for ${fmR(s)}?`, ok: 'Approve', tone: 'ok' },
+    approved: { title: 'Process payroll?', msg: `${EMP[id].name}: process payroll for ${fmR(s)}? This locks the figures (${peso(c.net)} net pay).`, ok: 'Process payroll', tone: 'warn' },
+    processed: { title: 'Release payslip?', msg: `${EMP[id].name}: release the payslip (${peso(c.net)}) for ${fmR(s)}? Staff will see the final amounts.`, ok: 'Release payslip', tone: 'ok' },
+  }[nx[0]] || { title: nx[1] + '?', msg: `${EMP[id].name}: ${nx[1].toLowerCase()} for ${fmR(s)}?`, ok: nx[1], tone: 'warn' };
+  if (!await confirmCard(cfg)) return;
+  payAdv(s, id); savePay();
+  const ns = pStatus(s, id);
+  toast(ns === 'released' ? `${EMP[id].name}: Payslip released.` : `${EMP[id].name}: ${PAY_ST[ns][1]}.`);
+  closePay(); renderPayroll();
+});
 const payClick = (e, s) => {
   const b = e.target.closest('button'), c = e.target.closest('[data-sel]');
   if (c) { c.checked ? pSel.add(c.dataset.sel) : pSel.delete(c.dataset.sel); return; }
@@ -1004,7 +1179,7 @@ function renderReports() {
   const s = new Date($('#r-per').value + 'T00:00'), all = payRows(s, true), prev = payRows(addDays(s, -7), true);
   $('#r-label').textContent = `Pay period: ${fmR(s)}`;
   const ce = $('#r-emp').value, cp = $('#r-pos').value, poss = [...new Set(all.map(r => r.e.pos))].sort();
-  $('#r-emp').innerHTML = '<option value="">All Employees</option>' + all.map(r => `<option value="${r.id}">${esc(r.e.name)}</option>`).join('');
+  $('#r-emp').innerHTML = '<option value="">All Staff</option>' + all.map(r => `<option value="${r.id}">${esc(r.e.name)}</option>`).join('');
   $('#r-emp').value = all.some(r => r.id === ce) ? ce : '';
   $('#r-pos').innerHTML = '<option value="">All Positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
   $('#r-pos').value = poss.includes(cp) ? cp : '';
@@ -1013,7 +1188,7 @@ function renderReports() {
   const rows = all.filter(f), pr = prev.filter(f); rView = { rows, s };
   const sum = (l, k) => l.reduce((t, r) => t + r.c[k], 0), pending = rows.filter(r => r.st === 'review').length;
   const dl = (cur, old, bad) => old > 0 ? `<span style="color:var(--${(cur >= old) !== !!bad ? 'ok' : 'err'})">${cur >= old ? '▲' : '▼'} ${Math.abs(Math.round((cur - old) / old * 100))}%</span> vs. previous period` : 'No previous period data';
-  $('#r-stats').innerHTML = [['Total employees', rows.length, 'for selected period'], ['Total gross pay', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))], ['Total deductions', peso(sum(rows, 'ded')), dl(sum(rows, 'ded'), sum(pr, 'ded'), 1)],
+  $('#r-stats').innerHTML = [['Total staff', rows.length, 'for selected period'], ['Total gross pay', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))], ['Total deductions', peso(sum(rows, 'ded')), dl(sum(rows, 'ded'), sum(pr, 'ded'), 1)],
   ['Total net pay', peso(sum(rows, 'net')), dl(sum(rows, 'net'), sum(pr, 'net'))], ['Total payroll cost', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))]]
     .map(([l, v, n]) => `<div class="card p-4"><div class="muted text-sm">${l}</div><div class="text-2xl font-semibold mt-1">${v}</div><div class="muted text-xs mt-1">${n}</div></div>`).join('');
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); rPage = Math.min(rPage, pages);
@@ -1026,7 +1201,7 @@ function renderReports() {
     : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
   $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#r-pager').innerHTML = dpager(rPage, pages);
-  $('#r-sum').innerHTML = [['Total employees', rows.length], ['Total gross pay', peso(sum(rows, 'gross'))], ['Total deductions', peso(sum(rows, 'ded'))], ['Total net pay', peso(sum(rows, 'net'))], ['Pending review', pending]]
+  $('#r-sum').innerHTML = [['Total staff', rows.length], ['Total gross pay', peso(sum(rows, 'gross'))], ['Total deductions', peso(sum(rows, 'ded'))], ['Total net pay', peso(sum(rows, 'net'))], ['Pending review', pending]]
     .map(([l, v]) => `<div><div class="muted text-xs">${l}</div><div class="font-semibold text-lg">${v}</div></div>`).join('');
 }
 ['#r-per', '#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).addEventListener('input', () => { rPage = 1; renderReports(); }));
@@ -1041,7 +1216,7 @@ $('#r-menu').addEventListener('click', e => {
   if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
   if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); window.print(); return; }
   const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
-  const head = ['Employee ID', 'Employee Name', 'Position', 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
+  const head = ['Staff ID', 'Staff Name', 'Position', 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
   const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.mins), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
   const t = k => rView.rows.reduce((x, r) => x + r.c[k], 0).toFixed(2);
   lines.push(['TOTAL', '', '', per, '', t('gross'), t('ded'), t('net'), '']);
@@ -1071,8 +1246,8 @@ function psHtml(id, s, st) {
   }).join('');
   const ded = Object.entries(g).map(([t, v]) => `<tr><td>${esc(dedName(t))}</td><td class="r">${num(v)}</td></tr>`).join('') || '<tr><td>No deductions</td><td class="r">0.00</td></tr>';
   return `<div class="ps">${st === 'released' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet. Release it from Payroll once payroll is processed.</div>'}
-  <div class="ps-head"><div><h2>EMPLOYEE PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">Bulacan, Philippines</div></div></div>
-  <dl class="ps-info"><dt>Employee Name</dt><dd>: ${esc(e.name)}</dd><dt>Employee ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(weekEnd(s))}</dd></dl>
+  <div class="ps-head"><div><h2>STAFF PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">Bulacan, Philippines</div></div></div>
+  <dl class="ps-info"><dt>Staff Name</dt><dd>: ${esc(e.name)}</dd><dt>Staff ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(weekEnd(s))}</dd></dl>
   <h3>1. Attendance summary</h3><table><thead><tr><th>Date</th><th>Day</th><th>Time in</th><th>Time out</th><th class="r">Total hours</th></tr></thead><tbody>${att}<tr class="ps-tot"><td colspan="4" class="r">Total Hours Worked</td><td class="r">${fmtHM(c.mins)}</td></tr></tbody></table>
   <div class="ps-cols"><div><h3>2. Earnings / gross pay</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>
     <tr class="ps-tot"><td>GROSS PAY</td><td class="r">${peso(c.gross)}</td></tr></tbody></table></div>
@@ -1167,7 +1342,7 @@ function route() {
     $('#page-reports').classList.toggle('hidden', v !== 'reports');
     $('#page-payslips').classList.toggle('hidden', v !== 'payslips');
     $$('.nav a').forEach(a => a.classList.toggle('active', a.dataset.page === v));
-    if (v === 'dashboard') renderDash(); else if (v === 'employees') renderEmployees(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips(); else renderAttendance();
+    if (v === 'dashboard') renderDash(); else if (v === 'employees') renderStaff(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips(); else renderAttendance();
     collapsed = !isDesk(); applySide();
   }
 }

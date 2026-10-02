@@ -32,6 +32,16 @@ h1, h2 { letter-spacing: -.01em; }
 .lbl { display: block; font-size: .85rem; font-weight: 500; color: var(--muted); margin-bottom: .3rem; }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+/* Confirmation card (destructive / important actions) */
+#confirm-modal { z-index: 60; } /* sits above the z-50 modals it can be opened from (e.g. payroll details) */
+.cf-icon { width: 3.25rem; height: 3.25rem; border-radius: 99px; display: grid; place-items: center; font-size: 1.5rem; font-weight: 700; }
+.cf-icon.danger { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); border: 1px solid color-mix(in srgb, var(--err) 35%, transparent); }
+.cf-icon.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+.cf-icon.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+#cf-ok.cf-danger { background: var(--err); border-color: var(--err); color: #fff; }
+:root[data-theme="dark"] #cf-ok.cf-danger { color: #241d18; }
+#cf-ok.cf-danger:hover { filter: brightness(1.07); }
+
 .badge { display: inline-flex; align-items: center; gap: .4rem; padding: .15rem .6rem; border-radius: 99px; font-size: .76rem; font-weight: 600; white-space: nowrap; }
 .badge::before { content: ""; width: .45rem; height: .45rem; border-radius: 99px; background: currentColor; }
 .b-ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
@@ -92,6 +102,10 @@ tbody tr.border-t:hover { background: color-mix(in srgb, var(--bg) 75%, transpar
 
 .toast { animation: toast-in .25s ease; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+/* Notification dropdown (dashboard header bell) */
+#bell-panel { position: absolute; right: 0; top: calc(100% + .5rem); width: min(18rem, 80vw); min-height: 22rem; display: grid; place-items: center; padding: 1rem; border-radius: var(--r-md); box-shadow: 0 24px 60px -16px rgba(35,22,12,.25); z-index: 50; text-align: center; }
+#bell-panel.hidden { display: none; }
 @media (prefers-reduced-motion: reduce) { .toast, #sidebar { animation: none; transition: none; } }
 
 #f-next, #f-draft { min-height: 2.75rem; }

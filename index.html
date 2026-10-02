@@ -27,13 +27,13 @@
   <div class="grid sm:grid-cols-2 gap-4 mt-10">
     <a href="#/dashboard" class="card choice p-6 flex flex-col">
       <h2 class="font-medium">Payroll management</h2>
-      <p class="muted text-sm mt-2 flex-1">Employees, schedules, attendance records, payroll, reports and payslips.</p>
+      <p class="muted text-sm mt-2 flex-1">Staff, schedules, attendance records, payroll, reports and payslips.</p>
       <p class="text-sm mt-6">For admin only</p>
     </a>
     <a href="#/scan" class="card choice p-6 flex flex-col">
       <h2 class="font-medium">Attendance monitoring</h2>
       <p class="muted text-sm mt-2 flex-1">Scan your QR code to record your time in or out.</p>
-      <p class="text-sm mt-6">For employees</p>
+      <p class="text-sm mt-6">For staff</p>
     </a>
   </div>
   <p class="muted text-xs mt-12">Demonstration prototype, not a working system.</p>
@@ -46,7 +46,7 @@
   <div class="login-aside hidden lg:flex flex-col justify-between p-12">
     <div class="logo-lockup text-xl font-semibold"><img src="img/logo-white.png" alt="" class="logo-w"><img src="img/logo-brown.png" alt="" class="logo-b">InfusoPay</div>
     <img src="img/login-cafe.svg" alt="" class="login-art">
-    <div><h2 class="text-3xl font-semibold leading-tight max-w-sm">Simple payroll for a growing café.</h2>
+    <div><h2 class="text-3xl font-semibold leading-tight max-w-sm">Simple payroll for a growing business.</h2>
     <p class="muted mt-3 max-w-xs">Attendance, schedules and payslips in one calm place.</p></div>
     <p class="muted text-xs">Demonstration prototype, not a working system.</p>
   </div>
@@ -76,9 +76,9 @@
   <form id="reg-form" class="w-full max-w-2xl" autocomplete="off">
     <a href="#/login" class="muted text-sm">← Back to log in</a>
     <h1 class="text-2xl font-semibold mt-4">Create your account</h1>
-    <p class="muted text-sm mt-1">Set up InfusoPay for your café.</p>
+    <p class="muted text-sm mt-1">Set up InfusoPay for your business.</p>
     <div class="card p-6 mt-6 grid sm:grid-cols-2 gap-4">
-      <div><label class="lbl" for="rb">Business name</label><input id="rb" class="input" placeholder="e.g. Brew &amp; Co. Café"></div>
+      <div><label class="lbl" for="rb">Business name</label><input id="rb" class="input" placeholder="e.g. Brew &amp; Co."></div>
       <div><label class="lbl" for="rn">Full name</label><input id="rn" class="input" placeholder="e.g. Maria Santos"></div>
       <div><label class="lbl" for="ru">Username</label><input id="ru" class="input"></div>
       <div><label class="lbl" for="re">Email (optional)</label><input id="re" type="email" class="input"></div>
@@ -121,7 +121,7 @@
   <main class="flex-1 w-full max-w-5xl mx-auto p-6 grid lg:grid-cols-[1fr_300px] gap-8 items-start">
     <div>
       <h1 class="text-2xl font-semibold">Scan your QR code</h1>
-      <p class="muted text-sm mt-1">Position your employee ID inside the frame.</p>
+      <p class="muted text-sm mt-1">Position your staff ID inside the frame.</p>
       <div class="card mt-5 overflow-hidden relative aspect-[4/3] grid place-items-center">
         <video id="qv" playsinline muted class="w-full h-full object-cover hidden"></video>
         <div id="qframe" class="hidden absolute inset-[18%] rounded-2xl border-2 pointer-events-none" style="border-color:var(--accent);opacity:.75"></div>
@@ -129,7 +129,7 @@
       </div>
       <button id="retry" class="btn mt-3 hidden">Allow camera</button>
       <div class="flex items-center gap-3 my-5 muted text-sm"><span class="flex-1 h-px" style="background:var(--line)"></span>or<span class="flex-1 h-px" style="background:var(--line)"></span></div>
-      <form id="manual" class="flex gap-2"><input id="mid" class="input" placeholder="Enter employee ID, e.g. EMP-001" aria-label="Employee ID"><button class="ghost shrink-0">Continue</button></form>
+      <form id="manual" class="flex gap-2"><input id="mid" class="input" placeholder="Enter staff ID, e.g. EMP-001" aria-label="Staff ID"><button class="ghost shrink-0">Continue</button></form>
       <p class="muted text-xs mt-4">Demo IDs run from EMP-001 to EMP-015. <a href="#/qr" class="underline">Show demo QR codes</a> to test the camera.</p>
     </div>
     <aside class="card p-5">
@@ -162,6 +162,12 @@
         <div><div class="font-medium" id="en"></div><div class="muted text-sm" id="ei"></div></div></div>
         <dl class="mt-5 space-y-3 text-sm"><div class="flex justify-between"><dt class="muted">Position</dt><dd id="ep"></dd></div><div class="flex justify-between"><dt class="muted">Schedule</dt><dd id="es"></dd></div></dl>
       </div>
+      <div id="late-wrap" class="card p-5 mt-4 hidden" style="border-color:var(--warn)">
+        <p id="late-msg" class="text-sm font-medium"></p>
+        <label class="lbl mt-3" for="late-note">Reason for being late <span class="muted font-normal">(optional)</span></label>
+        <textarea id="late-note" class="input" rows="2" maxlength="140" placeholder="e.g. Heavy traffic on the way"></textarea>
+        <p class="muted text-xs mt-1">Your manager will see this in Notifications.</p>
+      </div>
     </div>
     <div class="flex justify-between gap-3 mt-6"><a href="#/scan" class="ghost">Scan again</a><button id="vbtn" class="btn px-6">Verify identity</button></div>
   </main>
@@ -172,8 +178,8 @@
 <section id="v-qr" class="view">
 <div class="min-h-screen max-w-5xl mx-auto p-6">
   <a href="#/scan" class="muted text-sm">← Back to scanner</a>
-  <h1 class="text-2xl font-semibold mt-4">Demo employee QR codes</h1>
-  <p class="muted text-sm mt-1">Show one to the scanner from another screen, or print this page. Each code holds the employee ID.</p>
+  <h1 class="text-2xl font-semibold mt-4">Demo staff QR codes</h1>
+  <p class="muted text-sm mt-1">Show one to the scanner from another screen, or print this page. Each code holds the staff ID.</p>
   <div id="qr-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6"></div>
 </div>
 </section>
@@ -185,7 +191,7 @@
   <aside id="sidebar" class="fixed lg:static z-40 inset-y-0 left-0 w-60 shrink-0 border-r hair flex flex-col p-4" style="padding-top:calc(1rem + env(safe-area-inset-top,0px))">
     <div class="brand"><img src="img/logo-white.png" alt="" class="logo-w brand-logo"><img src="img/logo-brown.png" alt="" class="logo-b brand-logo">InfusoPay</div>
     <nav class="nav mt-4 space-y-1 flex-1">
-      <a href="#/dashboard" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a><a href="#/employees" data-page="employees"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Employees</a><a href="#/schedules" data-page="schedules"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Schedules</a><a href="#/attendance" data-page="attendance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Attendance</a><a href="#/deductions" data-page="deductions"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>Deductions</a><a href="#/payroll" data-page="payroll"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Payroll</a><a href="#/reports" data-page="reports"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Reports</a><a href="#/payslips" data-page="payslips"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>Payslips</a><a href="#/dashboard" data-soon><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Settings</a>
+      <a href="#/dashboard" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a><a href="#/employees" data-page="employees"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Staff</a><a href="#/schedules" data-page="schedules"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Schedules</a><a href="#/attendance" data-page="attendance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Attendance</a><a href="#/deductions" data-page="deductions"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>Deductions</a><a href="#/payroll" data-page="payroll"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Payroll</a><a href="#/reports" data-page="reports"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Reports</a><a href="#/payslips" data-page="payslips"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>Payslips</a><a href="#/dashboard" data-soon><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Settings</a>
     </nav>
     <img src="img/login-cafe.svg" alt="" class="side-art">
     <button id="switch" class="ghost text-sm mb-2">Switch module</button>
@@ -197,7 +203,10 @@
       <button id="burger" class="ghost !px-3" aria-label="Toggle navigation">☰</button>
       <div class="leading-tight min-w-0 truncate"><div class="font-medium truncate" id="d-biz"></div><div class="muted text-xs">Bulacan</div></div>
       <div class="ml-auto flex items-center gap-4"><div class="text-right text-sm leading-tight hidden sm:block"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
-        <button class="ghost !px-3" aria-label="Notifications" id="bell">🔔</button>
+        <div class="relative">
+          <button class="ghost !px-3 relative" aria-label="Notifications" id="bell" aria-haspopup="true" aria-expanded="false">🔔<span id="bell-dot" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full" style="background:var(--err)"></span></button>
+          <div id="bell-panel" class="card hidden" role="status"><p class="muted text-sm">No notifications</p></div>
+        </div>
         <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-medium" style="background:var(--bg)" id="d-av"></div></div>
     </header>
     <main id="page-dashboard" class="flex-1 overflow-auto p-4 sm:p-6">
@@ -211,28 +220,28 @@
       </div>
       <div class="grid md:grid-cols-3 gap-4 mt-4">
         <div class="card p-5"><h2 class="font-medium">Payroll status</h2><p class="text-2xl font-semibold mt-2">2</p><p class="muted text-sm">payrolls waiting for approval</p></div>
-        <div class="card p-5"><h2 class="font-medium">Upcoming schedules</h2><p class="text-2xl font-semibold mt-2">12</p><p class="muted text-sm">employees scheduled tomorrow</p></div>
-        <div class="card p-5"><h2 class="font-medium">Notifications</h2><p class="text-2xl font-semibold mt-2">3</p><p class="muted text-sm">new notifications</p></div>
+        <div class="card p-5"><h2 class="font-medium">Upcoming schedules</h2><p class="text-2xl font-semibold mt-2">12</p><p class="muted text-sm">staff scheduled tomorrow</p></div>
+        <div class="card p-5"><h2 class="font-medium">Notifications</h2><p class="text-2xl font-semibold mt-2" id="stat-late">0</p><p class="muted text-sm">late arrivals today — see the bell</p></div>
       </div>
     </main>
 
-    <!-- EMPLOYEES PAGE -->
+    <!-- STAFF PAGE -->
     <main id="page-employees" class="hidden flex-1 overflow-auto p-4 sm:p-6">
-      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Employees</span></nav>
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Staff</span></nav>
       <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
-        <div><h1 class="text-2xl font-semibold">Employees</h1><p class="muted text-sm mt-1">Manage employee records, positions and employment details.</p></div>
-        <div class="flex flex-wrap gap-2"><button id="print-cards" class="ghost">Print selected ID cards</button><button id="add-emp" class="btn">+ Add employee</button></div>
+        <div><h1 class="text-2xl font-semibold">Staff</h1><p class="muted text-sm mt-1">Manage staff records, positions and staff details.</p></div>
+        <div class="flex flex-wrap gap-2"><button id="print-cards" class="ghost">Print selected ID cards</button><button id="add-emp" class="btn">+ Add staff</button></div>
       </div>
       <div id="emp-stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5"></div>
       <div class="card p-4 mt-4">
         <div class="grid md:grid-cols-[1fr_200px_200px] gap-3">
-          <input id="e-q" class="input" placeholder="Search by ID, name or position" aria-label="Search employees">
+          <input id="e-q" class="input" placeholder="Search by ID, name or position" aria-label="Search staff">
           <select id="e-pos" class="input" aria-label="Filter by position"></select>
           <select id="e-st" class="input" aria-label="Filter by status"><option value="">All status</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="draft">Draft</option></select>
         </div>
         <div class="overflow-auto max-h-[28rem] mt-4">
           <table class="w-full text-sm min-w-[900px]">
-            <thead class="muted text-left"><tr><th class="py-2 pr-3 font-normal w-8"><input type="checkbox" id="e-all" aria-label="Select all"></th><th class="py-2 font-normal w-10">#</th><th class="font-normal">Employee ID</th><th class="font-normal">Name</th><th class="font-normal">Position</th><th class="font-normal">Rate per hour (₱)</th><th class="font-normal">Contact number</th><th class="font-normal">Date hired</th><th class="font-normal">Status</th><th class="font-normal">Actions</th></tr></thead>
+            <thead class="muted text-left"><tr><th class="py-2 pr-3 font-normal w-8"><input type="checkbox" id="e-all" aria-label="Select all"></th><th class="py-2 font-normal w-10">#</th><th class="font-normal">Staff ID</th><th class="font-normal">Name</th><th class="font-normal">Position</th><th class="font-normal">Rate per hour (₱)</th><th class="font-normal">Contact number</th><th class="font-normal">Date hired</th><th class="font-normal">Status</th><th class="font-normal">Actions</th></tr></thead>
             <tbody id="emp-rows"></tbody>
           </table>
         </div>
@@ -242,7 +251,7 @@
     <!-- SCHEDULES PAGE -->
     <main id="page-schedules" class="hidden flex-1 overflow-auto p-4 sm:p-6">
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Schedules</span></nav>
-      <div class="mt-3"><h1 class="text-2xl font-semibold">Schedule</h1><p class="muted text-sm mt-1">Set each employee’s shifts once. Attendance and payroll use them automatically.</p></div>
+      <div class="mt-3"><h1 class="text-2xl font-semibold">Schedule</h1><p class="muted text-sm mt-1">Set each staff’s shifts once. Attendance and payroll use them automatically.</p></div>
       <div class="card p-4 mt-5">
         <div class="flex flex-wrap items-center gap-3">
           <button id="s-prev" class="ghost !px-3" aria-label="Previous week">‹</button>
@@ -250,7 +259,7 @@
           <button id="s-next" class="ghost !px-3" aria-label="Next week">›</button>
           <button id="s-today" class="ghost text-sm">This week</button>
           <div class="flex-1"></div>
-          <input id="s-q" class="input w-full sm:!w-48" placeholder="Search employee" aria-label="Search employee">
+          <input id="s-q" class="input w-full sm:!w-48" placeholder="Search staff" aria-label="Search staff">
           <select id="s-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
         </div>
         <div class="flex flex-wrap gap-4 text-xs muted mt-4">
@@ -261,20 +270,20 @@
             <thead id="s-head"></thead><tbody id="s-rows"></tbody>
           </table>
         </div>
-        <p class="muted text-xs mt-2">Click a day to set it as Scheduled or Day off. Past days are locked. Changes to today update Attendance right away. Only active employees appear here, and only from their date hired. Employees without an entry follow their default shift and one weekly day off.</p>
+        <p class="muted text-xs mt-2">Click a day to set it as Scheduled or Day off. Past days are locked. Changes to today update Attendance right away. Only active staff appear here, and only from their date hired. Staff without an entry follow their default shift and one weekly day off.</p>
       </div>
     </main>
     <!-- ATTENDANCE PAGE -->
     <main id="page-attendance" class="hidden flex-1 overflow-auto p-4 sm:p-6">
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Attendance</span></nav>
-      <div class="mt-3"><h1 class="text-2xl font-semibold">Attendance Records</h1><p class="muted text-sm mt-1">View employee attendance records.</p></div>
+      <div class="mt-3"><h1 class="text-2xl font-semibold">Attendance Records</h1><p class="muted text-sm mt-1">View staff attendance records.</p></div>
       <div class="card p-4 mt-5">
         <div class="flex flex-wrap items-center gap-2">
           <div id="a-modes" class="flex gap-2"><button type="button" data-mode="today">Today</button></div>
           <input id="a-date" type="date" class="input w-full sm:!w-auto" aria-label="Pick a date">
           <select id="a-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
           <select id="a-st" class="input w-full sm:!w-36" aria-label="Filter by status"><option value="">All Status</option><option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option><option value="off">Day off</option></select>
-          <input id="a-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search attendance">
+          <input id="a-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search attendance">
         </div>
         <p id="a-label" class="muted text-sm mt-4"></p>
         <div class="overflow-auto mt-2">
@@ -290,7 +299,7 @@
     <main id="page-deductions" class="hidden flex-1 overflow-auto p-4 sm:p-6">
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Deductions</span></nav>
       <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
-        <div><h1 class="text-2xl font-semibold">Deductions</h1><p class="muted text-sm mt-1">Manage employee deductions and applicable payroll adjustments.</p></div>
+        <div><h1 class="text-2xl font-semibold">Deductions</h1><p class="muted text-sm mt-1">Manage staff deductions and applicable payroll adjustments.</p></div>
         <button id="add-ded" class="btn">+ Add deduction</button>
       </div>
       <div id="d-stats" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5"></div>
@@ -298,15 +307,15 @@
         <div class="flex flex-wrap items-center gap-2">
           <select id="d-per" class="input w-full sm:!w-auto" aria-label="Period"><option value="month">This month</option><option value="last">Last month</option><option value="week">This week</option><option value="today">Today</option><option value="custom">Custom range</option></select>
           <input id="d-from" type="date" class="input w-full sm:!w-auto hidden" aria-label="From date"><input id="d-to" type="date" class="input w-full sm:!w-auto hidden" aria-label="To date">
-          <select id="d-emp" class="input w-full sm:!w-52" aria-label="Filter by employee"></select>
+          <select id="d-emp" class="input w-full sm:!w-52" aria-label="Filter by staff"></select>
           <select id="d-type" class="input w-full sm:!w-48" aria-label="Filter by deduction type"></select>
-          <input id="d-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search deductions">
+          <input id="d-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search deductions">
         </div>
         <p id="d-label" class="muted text-sm mt-4"></p>
         <div class="overflow-auto mt-2">
           <table class="w-full text-sm min-w-[980px]">
             <thead class="muted text-left text-xs uppercase tracking-wide"><tr>
-              <th class="py-2 font-normal pr-3">Date</th><th class="font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Deduction type</th><th class="font-normal pr-3">Amount (₱)</th><th class="font-normal pr-3">Remarks / reason</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <th class="py-2 font-normal pr-3">Date</th><th class="font-normal pr-3">Staff ID</th><th class="font-normal pr-3">Staff name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Deduction type</th><th class="font-normal pr-3">Amount (₱)</th><th class="font-normal pr-3">Remarks / reason</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
             <tbody id="d-rows"></tbody>
           </table>
         </div>
@@ -325,16 +334,16 @@
       </div>
       <div class="card p-4 mt-5 no-print"><div class="flex flex-wrap items-center gap-2">
         <select id="r-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
-        <select id="r-emp" class="input w-full sm:!w-52" aria-label="Employee"></select>
+        <select id="r-emp" class="input w-full sm:!w-52" aria-label="Staff"></select>
         <select id="r-pos" class="input w-full sm:!w-44" aria-label="Position"></select>
         <select id="r-st" class="input w-full sm:!w-44" aria-label="Payroll status"><option value="">All Statuses</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
-        <input id="r-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search reports"></div></div>
+        <input id="r-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search reports"></div></div>
       <p id="r-label" class="muted text-sm mt-4"></p>
       <div id="r-stats" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-2"></div>
       <div class="card p-4 mt-4">
         <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-medium">Payroll records</h2><p id="r-count" class="muted text-sm"></p></div>
         <div class="overflow-auto mt-2"><table class="w-full text-sm" style="min-width:1000px">
-          <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Total hrs worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal no-print">Actions</th></tr></thead>
+          <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 font-normal pr-3">Staff ID</th><th class="font-normal pr-3">Staff name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Total hrs worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal no-print">Actions</th></tr></thead>
           <tbody id="r-rows"></tbody></table></div>
         <div id="r-pager" class="flex gap-2 justify-end mt-4 no-print"></div></div>
       <div id="r-sum" class="card p-4 mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4"></div>
@@ -344,16 +353,16 @@
     <!-- PAYSLIPS PAGE -->
     <main id="page-payslips" class="hidden flex-1 overflow-auto p-4 sm:p-6">
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Payslips</span></nav>
-      <div class="mt-3"><h1 class="text-2xl font-semibold">Payslips</h1><p class="muted text-sm mt-1">View and manage employee payslips. Select View to open a payslip.</p></div>
+      <div class="mt-3"><h1 class="text-2xl font-semibold">Payslips</h1><p class="muted text-sm mt-1">View and manage staff payslips. Select View to open a payslip.</p></div>
       <div id="ps-wrap" class="ps-wrap">
         <div class="card p-4 min-w-0">
           <div class="flex flex-wrap items-center gap-2">
             <select id="ps-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
             <button type="button" id="ps-all-dl" class="btn text-sm">Download all payslips</button>
-            <input id="ps-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search payslips">
+            <input id="ps-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search payslips">
           </div>
           <div class="overflow-auto mt-3"><table class="w-full text-sm min-w-[560px]">
-            <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+            <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Staff ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
             <tbody id="ps-rows"></tbody></table></div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="ps-count" class="muted text-sm"></p><div id="ps-pager" class="flex gap-2"></div></div>
           <p class="muted text-xs mt-4">A payslip can be previewed once payroll is approved. Processing payroll and releasing the payslip are separate steps: after payroll is Processed, use Release payslip in Payroll. Download is available once the payslip is Released.</p>
@@ -369,7 +378,7 @@
     <main id="page-payroll" class="hidden flex-1 overflow-auto p-4 sm:p-6">
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Payroll</span></nav>
       <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
-        <div><h1 class="text-2xl font-semibold">Payroll</h1><p class="muted text-sm mt-1">Generate and manage employee payroll from finalized attendance.</p></div>
+        <div><h1 class="text-2xl font-semibold">Payroll</h1><p class="muted text-sm mt-1">Generate and manage staff payroll from finalized attendance.</p></div>
         <div class="flex flex-wrap gap-2"><button id="p-adv" class="ghost">Advance selected</button><button id="p-gen" class="btn">Generate payroll</button></div>
       </div>
       <div class="card p-4 mt-5">
@@ -379,27 +388,27 @@
           <div class="flex flex-wrap items-center gap-2 mt-4">
             <select id="p-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
             <select id="p-st" class="input w-full sm:!w-44" aria-label="Filter by status"><option value="">All Status</option><option value="none">Not generated</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
-            <input id="p-q" class="input flex-1 min-w-[12rem]" placeholder="Search employee ID or name…" aria-label="Search payroll">
+            <input id="p-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search payroll">
           </div>
           <div class="overflow-auto mt-3">
             <table class="w-full text-sm min-w-[980px]">
-              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 w-8"><input type="checkbox" id="p-all" aria-label="Select all"></th><th class="font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 w-8"><input type="checkbox" id="p-all" aria-label="Select all"></th><th class="font-normal pr-3">Staff ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
               <tbody id="p-rows"></tbody>
             </table>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="p-count" class="muted text-sm"></p><div id="p-pager" class="flex gap-2"></div></div>
           <div id="p-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4"></div>
-          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the employee is a separate step. Employees stay in the current period until the whole period closes and moves to History.</p>
+          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the staff is a separate step. Staff stay in the current period until the whole period closes and moves to History.</p>
         </div>
         <div id="p-his" class="hidden">
           <p class="muted text-sm mt-4">Closed pay periods, archived as a whole. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
           <div class="overflow-auto mt-2"><table class="w-full text-sm min-w-[760px]">
-            <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Pay period</th><th class="font-normal pr-3">Employees</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+            <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Pay period</th><th class="font-normal pr-3">Staff</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
             <tbody id="h-rows"></tbody></table></div>
           <div id="h-detail" class="hidden mt-6">
             <div class="flex flex-wrap items-center justify-between gap-2"><h2 id="hd-title" class="font-medium"></h2><button type="button" id="hd-back" class="ghost text-sm">Close records</button></div>
             <div class="overflow-auto mt-2"><table class="w-full text-sm min-w-[900px]">
-              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Employee ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
+              <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 pr-3 font-normal">Staff ID</th><th class="font-normal pr-3">Name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Rate (₱/hr)</th><th class="font-normal pr-3">Hours worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal">Actions</th></tr></thead>
               <tbody id="hd-rows"></tbody></table></div>
             <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="hd-count" class="muted text-sm"></p><div id="hd-pager" class="flex gap-2"></div></div>
           </div>
@@ -410,7 +419,7 @@
 </div>
 </section>
 
-<!-- ADD / EDIT EMPLOYEE -->
+<!-- ADD / EDIT STAFF -->
 <div id="emp-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
   <form id="emp-form" class="card w-full max-w-3xl max-h-full overflow-auto p-6" autocomplete="off" novalidate>
     <div class="flex items-start justify-between gap-3">
@@ -418,13 +427,13 @@
       <button type="button" id="f-x" class="ghost !px-3" aria-label="Close">✕</button>
     </div>
     <div class="flex flex-wrap items-center gap-2 text-sm muted mt-5">
-      <span class="step on" data-dot="1">1</span><span data-lbl="1">Employee Information</span><span class="w-6 h-px" style="background:var(--line)"></span>
+      <span class="step on" data-dot="1">1</span><span data-lbl="1">Staff Information</span><span class="w-6 h-px" style="background:var(--line)"></span>
       <span class="step" data-dot="2">2</span><span data-lbl="2">Review &amp; Generate ID</span>
     </div>
     <section data-step="1" class="grid md:grid-cols-[1fr_240px] gap-6 mt-6">
       <div class="space-y-4">
-        <h3 class="font-medium">Employee Information</h3>
-        <div><label class="lbl">Employee ID</label>
+        <h3 class="font-medium">Staff Information</h3>
+        <div><label class="lbl">Staff ID</label>
           <div class="flex items-center gap-2"><input id="f-id" class="input" readonly style="opacity:.7"><span class="muted text-xs shrink-0">(Auto-generated)</span></div></div>
         <div><label class="lbl" for="f-name">Full name *</label><input id="f-name" class="input"></div>
         <div><label class="lbl" for="f-pos">Position *</label><select id="f-pos" class="input"></select></div>
@@ -436,7 +445,7 @@
         </div>
       </div>
       <div>
-        <h3 class="font-medium">Employee Photo</h3>
+        <h3 class="font-medium">Staff Photo</h3>
         <div id="p-prev" class="mt-3 aspect-square rounded-xl grid place-items-center overflow-hidden muted text-sm" style="background:var(--bg)"></div>
         <input id="f-file" type="file" accept="image/png,image/jpeg" class="hidden">
         <button type="button" id="p-up" class="btn w-full mt-3">Upload Photo</button>
@@ -466,11 +475,11 @@
   </form>
 </div>
 
-<!-- EDIT EMPLOYEE (existing records: only changeable details) -->
+<!-- EDIT STAFF (existing records: only changeable details) -->
 <div id="edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
   <form id="x-form" class="card w-full max-w-lg max-h-full overflow-auto p-6" autocomplete="off" novalidate>
     <div class="flex items-start justify-between gap-3">
-      <div><h2 class="text-xl font-semibold">Edit employee</h2><p class="muted text-sm mt-1">Update this employee’s details. The ID and hire date can’t be changed.</p></div>
+      <div><h2 class="text-xl font-semibold">Edit staff</h2><p class="muted text-sm mt-1">Update this staff’s details. The ID and hire date can’t be changed.</p></div>
       <button type="button" id="x-x" class="ghost !px-3" aria-label="Close">✕</button>
     </div>
     <dl id="x-info" class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm mt-5 p-3 rounded-xl" style="background:var(--bg)"></dl>
@@ -521,14 +530,14 @@
 <div id="ded-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
   <form id="dm-form" class="card w-full max-w-md max-h-full overflow-auto p-6 space-y-4" autocomplete="off" novalidate>
     <div class="flex items-start justify-between gap-3"><div><h2 id="dm-title" class="text-xl font-semibold"></h2><p class="muted text-sm mt-1">For deductions that don’t come from attendance.</p></div><button type="button" id="dm-x" class="ghost !px-3" aria-label="Close">✕</button></div>
-    <div><label class="lbl" for="dm-emp">Employee *</label><select id="dm-emp" class="input"></select></div>
+    <div><label class="lbl" for="dm-emp">Staff *</label><select id="dm-emp" class="input"></select></div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div><label class="lbl" for="dm-type">Deduction type *</label><select id="dm-type" class="input"></select></div>
       <div><label class="lbl" for="dm-date">Date *</label><input id="dm-date" type="date" class="input"></div>
     </div>
     <div id="dm-other-w" class="hidden"><label class="lbl" for="dm-other">Specify deduction type *</label><input id="dm-other" class="input" maxlength="30" placeholder="Type the deduction name, then press Enter"><p class="muted text-xs mt-1">It will be saved to the Deduction type list.</p></div>
     <div><label class="lbl" for="dm-amt">Amount *</label><div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input id="dm-amt" type="number" min="0" step="0.01" class="input pl-8" placeholder="0.00"></div></div>
-    <div><label class="lbl" for="dm-rem">Remarks</label><input id="dm-rem" class="input" maxlength="80" placeholder="e.g. Salary advance"></div>
+    <div><label class="lbl" for="dm-rem">Remarks</label><input id="dm-rem" class="input" maxlength="80" placeholder="e.g. Wages advance"></div>
     <div class="flex justify-end gap-2"><button type="button" id="dm-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Save deduction</button></div>
   </form>
 </div>
@@ -536,7 +545,7 @@
 <!-- ID CARD PREVIEW -->
 <div id="card-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
   <div class="card w-full max-w-md max-h-full overflow-auto p-6 space-y-4">
-    <div class="flex items-start justify-between gap-3"><div><h2 class="text-xl font-semibold">Employee ID card</h2><p class="muted text-sm mt-1">Front and back. Printed at standard ID size (85.6 × 54 mm).</p></div><button type="button" id="cm-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <div class="flex items-start justify-between gap-3"><div><h2 class="text-xl font-semibold">Staff ID card</h2><p class="muted text-sm mt-1">Front and back. Printed at standard ID size (85.6 × 54 mm).</p></div><button type="button" id="cm-x" class="ghost !px-3" aria-label="Close">✕</button></div>
     <div id="cm-body" class="flex flex-col items-center gap-4"></div>
     <p class="muted text-xs">In the print dialog choose “Save as PDF” to download, or print on card stock and cut to size.</p>
     <div class="flex justify-end gap-2"><button type="button" id="cm-close" class="ghost">Close</button><button type="button" id="cm-print" class="btn">Print / Save PDF</button></div>
@@ -544,13 +553,41 @@
 </div>
 <div id="card-sheet" aria-hidden="true"></div>
 
+<!-- CONFIRM: reusable confirmation card for destructive / important actions -->
+<div id="confirm-modal" class="fixed inset-0 z-50 no-print hidden items-center justify-center p-4 bg-black/40">
+  <div class="card w-full max-w-sm p-6 text-center" role="alertdialog" aria-modal="true" aria-labelledby="cf-title" aria-describedby="cf-msg">
+    <div id="cf-icon" class="cf-icon mx-auto" aria-hidden="true"></div>
+    <h2 id="cf-title" class="text-xl font-semibold mt-4"></h2>
+    <p id="cf-msg" class="muted text-sm mt-2"></p>
+    <div class="grid grid-cols-2 gap-3 mt-6">
+      <button type="button" id="cf-cancel" class="ghost">Cancel</button>
+      <button type="button" id="cf-ok" class="btn">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOG OUT: PIN CONFIRMATION -->
 <div id="logout-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
   <form id="lo-form" class="card w-full max-w-sm p-6 space-y-4" autocomplete="off">
     <div class="flex items-start justify-between gap-3"><div><h2 class="text-xl font-semibold">Log out</h2><p class="muted text-sm mt-1">Enter your 6-digit PIN to log out.</p></div><button type="button" id="lo-x" class="ghost !px-3" aria-label="Close">✕</button></div>
-    <div><label class="lbl" for="lo-pin">PIN</label><input id="lo-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input text-center text-xl tracking-wide" placeholder="••••••"></div>
+    <div id="lo-pin-w"><label class="lbl" for="lo-pin">PIN</label><input id="lo-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input text-center text-xl tracking-wide" placeholder="••••••"></div>
     <p id="lo-err" class="text-sm hidden" style="color:var(--err)"></p>
     <div class="flex justify-end gap-2"><button type="button" id="lo-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Log out</button></div>
+  </form>
+</div>
+
+<!-- FORGOT PASSWORD: verify identity with username + payroll PIN, then set a new password -->
+<div id="forgot-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="fp-form" class="card w-full max-w-sm p-6 space-y-4" autocomplete="off">
+    <div class="flex items-start justify-between gap-3"><div><h2 class="text-xl font-semibold">Reset password</h2><p class="muted text-sm mt-1">Enter your username and 6-digit payroll PIN to choose a new password.</p></div><button type="button" id="fp-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <div><label class="lbl" for="fp-user">Username</label><input id="fp-user" class="input"></div>
+    <div><label class="lbl" for="fp-pin">Payroll PIN</label><input id="fp-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input text-center text-xl tracking-wide" placeholder="••••••"></div>
+    <div><label class="lbl" for="fp-new">New password</label>
+      <div class="relative"><input id="fp-new" type="password" class="input pr-16" placeholder="At least 6 characters">
+      <button type="button" data-eye="fp-new" class="absolute right-3 top-1/2 -translate-y-1/2 text-sm muted">Show</button></div></div>
+    <div><label class="lbl" for="fp-confirm">Confirm new password</label><input id="fp-confirm" type="password" class="input"></div>
+    <p id="fp-err" class="text-sm hidden" style="color:var(--err)"></p>
+    <div class="flex justify-end gap-2"><button type="button" id="fp-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Reset password</button></div>
   </form>
 </div>
 
