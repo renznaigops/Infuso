@@ -17,7 +17,7 @@ function defaultEmps() {
   const o = {};
   ROSTER.forEach(([name, pos], i) => {
     const d = new Date(2024, 0, 10 + i * 38), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
-    o['EMP-' + pad(i + 1)] = withShift({
+    o['STF-' + pad(i + 1)] = withShift({
       name, pos, rate: 80, shift: i % 3 === 1 ? 1 : 0, active: i < 13, hired: `${d.getFullYear()}-${mm}-${dd}`,
       contact: `09${['17', '18', '19', '16'][i % 4]} ${pad(120 + i * 53)} ${String(1000 + i * 731).slice(-4)}`
     });
@@ -42,6 +42,21 @@ const go = h => { if (location.hash === '#/' + h) route(); else location.hash = 
 
 let sess = null, pending = null, stage = 2, stream = null, camToken = 0, raf = null, lastScan = { c: null, t: 0 };
 
+/* ---------- One-time migration: staff IDs EMP-### → STF-### ---------- */
+if (store.get('idv', 0) < 2) {
+  const rId = v => typeof v === 'string' && v.startsWith('EMP-') ? 'STF-' + v.slice(4) : v; // rename a single id
+  const emps = store.get('emps', null);
+  if (emps) { const o = {}; Object.keys(emps).forEach(k => o[rId(k)] = emps[k]); store.set('emps', o); }
+  const sched = store.get('sched', null);
+  if (sched) { Object.keys(sched).forEach(d => { const day = sched[d] || {}, o = {}; Object.keys(day).forEach(k => o[rId(k)] = day[k]); sched[d] = o; }); store.set('sched', sched); }
+  const logs = store.get('logs', null);
+  if (Array.isArray(logs)) { logs.forEach(x => { x.id = rId(x.id); }); store.set('logs', logs); }
+  const deds = store.get('deds', null);
+  if (Array.isArray(deds)) { deds.forEach(x => { x.id = rId(x.id); }); store.set('deds', deds); }
+  ['pay', 'paysnap'].forEach(key => { const m = store.get(key, null); if (m) { const o = {}; Object.keys(m).forEach(k => o[k.replace(/EMP-/g, 'STF-')] = m[k]); store.set(key, o); } });
+  store.set('idv', 2);
+}
+
 /* ---------- Demo data ---------- */
 Object.assign(EMP, store.get('emps', null) || defaultEmps());
 const saveEmps = () => store.set('emps', EMP);
@@ -53,7 +68,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const SHIFT_TYPES = { morning: { label: 'Morning', in: 480, out: 1020 }, afternoon: { label: 'Afternoon', in: 600, out: 1140 }, night: { label: 'Night', in: 900, out: 1440 } };
 const TYPE_BY_SHIFT = ['morning', 'afternoon', 'night'];
 const TYPE_LABEL = { morning: 'Morning', afternoon: 'Afternoon', night: 'Night', off: 'Day off', leave: 'On leave' };
-const SCH = store.get('sched', {}); // { 'YYYY-MM-DD': { 'EMP-001': { t, in, out } } }
+const SCH = store.get('sched', {}); // { 'YYYY-MM-DD': { 'STF-001': { t, in, out } } }
 const saveSch = () => store.set('sched', SCH);
 const dkey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function getSched(id, d) {
@@ -422,6 +437,26 @@ addEventListener('keydown', e => {
   if (panel && !panel.classList.contains('hidden')) { panel.classList.add('hidden'); $('#bell').setAttribute('aria-expanded', 'false'); }
 });
 
+/* Slide the stacked bars up from the baseline on every render (SVG transform attribute, so it works in every browser) */
+function riseBars(bars) {
+  if (!bars.length) return;
+  const DUR = 700, STAGGER = 55, DIST = 220, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  bars.forEach(g => { g.setAttribute('transform', reduce ? 'translate(0 0)' : `translate(0 ${DIST})`); g.style.opacity = reduce ? '1' : '0'; }); // wait below the baseline, so there is no flash before the first frame
+  if (reduce) return; // motion off: show them resting in place
+  const ease = t => 1 - Math.pow(1 - t, 3), t0 = performance.now();
+  const frame = now => {
+    let running = false;
+    bars.forEach((g, i) => {
+      const t = (now - t0 - i * STAGGER) / DUR, k = t <= 0 ? 0 : t >= 1 ? 1 : t, e = ease(k);
+      g.setAttribute('transform', `translate(0 ${(DIST * (1 - e)).toFixed(2)})`); // rises from below to its resting spot
+      g.style.opacity = e.toFixed(3);
+      if (k < 1) running = true;
+    });
+    if (running) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
 /* ---------- Chart: last 7 days, stacked bars (inline SVG, no library) ---------- */
 function renderChart(todayData) {
   const total = Math.max(15, activeIds().length), data = [...HIST, todayData], days = [];
@@ -432,12 +467,13 @@ function renderChart(todayData) {
   data.forEach(([p, l, a], i) => {
     const x = pl + gap / 2 + i * (bw + gap); let y = H - pb;
     const tot = sy(p + l + a);
-    s += `<mask id="fm${i}"><rect x="${x}" y="${H - pb - tot}" width="${bw}" height="${tot}" fill="url(#fg)"/></mask><g><title>${days[i]}: ${p} on time, ${l} late, ${a} absent</title><g mask="url(#fm${i})">`;
+    s += `<mask id="fm${i}"><rect x="${x}" y="${H - pb - tot}" width="${bw}" height="${tot}" fill="url(#fg)"/></mask><g><title>${days[i]}: ${p} on time, ${l} late, ${a} absent</title><g class="bar-anim"><g mask="url(#fm${i})">`;
     [[p, 'var(--brand)'], [l, 'var(--gold)'], [a, 'var(--err)']].forEach(([v, c]) => { const h = sy(v); y -= h; s += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}" rx="3"/>`; });
-    s += '</g>';
+    s += '</g></g>';
     s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${days[i]}</text></g>`;
   });
   $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" role="img" aria-label="Attendance over the last 7 days">${s}</svg>`;
+  riseBars($$('#chart .bar-anim')); // freshly built bars, so the rise replays every time the dashboard renders
 }
 $('#reset').addEventListener('click', async () => {
   const ok = await confirmCard({
@@ -493,7 +529,7 @@ $('#e-pos').innerHTML = '<option value="">All positions</option>' + POSITIONS.ma
 const LABELS = { 1: 'Continue to Review →', 2: 'Generate ID & save' };
 const modal = $('#emp-modal');
 let editId = null, W = null;
-const nextEmpId = () => 'EMP-' + pad(Math.max(0, ...Object.keys(EMP).map(k => +k.slice(4))) + 1);
+const nextEmpId = () => 'STF-' + pad(Math.max(0, ...Object.keys(EMP).map(k => +k.slice(4))) + 1);
 const peso = n => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
 
 function paintPhoto() {
@@ -824,7 +860,7 @@ const dedName = t => DED_TYPES[t] || 'Other'; // safe label lookup (call esc() w
 const rateOf = id => EMP[id]?.rate > 0 ? EMP[id].rate : DEF_RATE;
 const dedAmt = (id, mins) => Math.round(rateOf(id) / 60 * mins * 100) / 100; // hourly rate ÷ 60 × minutes
 const num = n => Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const seedDeds = () => [['EMP-002', 'advance', 450, 'Wages advance', 1], ['EMP-005', 'uniform', 100, 'Uniform fee', 2], ['EMP-010', 'lostid', 150, 'Lost ID', 3], ['EMP-004', 'advance', 300, 'Wages advance', 4], ['EMP-007', 'other', 200, 'Approved deduction', 6]]
+const seedDeds = () => [['STF-002', 'advance', 450, 'Wages advance', 1], ['STF-005', 'uniform', 100, 'Uniform fee', 2], ['STF-010', 'lostid', 150, 'Lost ID', 3], ['STF-004', 'advance', 300, 'Wages advance', 4], ['STF-007', 'other', 200, 'Approved deduction', 6]]
   .map(([id, type, amount, remarks, ago], i) => ({ k: 'm-' + (i + 1), id, type, amount, remarks, date: dkey(addDays(new Date(), -ago)) }));
 const DED = store.get('deds', null) || seedDeds();
 const saveDed = () => store.set('deds', DED);

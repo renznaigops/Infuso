@@ -15,7 +15,7 @@
 
 ## Code Conventions — Must Follow
 - JS: `'use strict'` top, helpers `$`, `$$`, `store.get/set`, `esc()`, `go()`, `toast()`, `fmtTime/fmtMin/fmtHM`, `dkey/addDays/weekEnd`, `initials`.
-- Employees: `EMP[id]` = `{name,pos,contact,hired,shift,active,start,sch,photo?,rate}`. IDs `EMP-001...`. `POSITIONS` is ONLY `['Kitchen Staff','Dine Staff']` — normalize old values to these.
+- Employees: `EMP[id]` = `{name,pos,contact,hired,shift,active,start,sch,photo?,rate}`. IDs `STF-001...`. `POSITIONS` is ONLY `['Kitchen Staff','Dine Staff']` — normalize old values to these.
 - Shifts: `SHIFTS = [[480,'8:00 AM – 5:00 PM'],[600,'10:00 AM – 7:00 PM'],[900,'3:00 PM – 12:00 AM']]`. `SHIFT_TYPES = morning/afternoon/night` + `off/leave`. `TYPE_BY_SHIFT = ['morning','afternoon','night']`.
 - Schedules: `SCH[dateKey][empId] = {t,in,out}` per-day overrides, else default shift. Past dates cannot be edited. Today cannot be set to `off` if employee already scanned in.
 - Attendance: max 4 scans/day `[tin, break-out, break-in, tout]`. `tout` only valid when n>=4. `hrs` excludes break. Status: `present/late/absent/upcoming/off/leave` with `ATT_BADGE`. `GRACE = 15` min. Demo history is deterministic via `hsh(id+key)` — preserve that.
