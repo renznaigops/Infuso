@@ -167,8 +167,25 @@ $('#pin-form').addEventListener('submit', e => {
   pinFails = 0; unlocked = true; go(pinTarget);
 });
 
-$('#logout').addEventListener('click', () => { sess = null; go('login'); });
-$('#home-out').addEventListener('click', () => { sess = null; go('login'); });
+/* Log out asks for the 6-digit PIN first, so employees at the station can't log the admin out */
+const loModal = $('#logout-modal');
+function openLogout() {
+  if (!sess.pin) { sess = null; go('login'); return; } // older accounts with no PIN yet log out directly
+  $('#lo-pin').value = ''; $('#lo-err').classList.add('hidden');
+  loModal.classList.remove('hidden'); loModal.classList.add('flex'); $('#lo-pin').focus();
+}
+const closeLogout = () => { loModal.classList.add('hidden'); loModal.classList.remove('flex'); };
+$('#lo-pin').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6); });
+$('#logout').addEventListener('click', openLogout);
+$('#home-out').addEventListener('click', openLogout);
+$('#lo-x').addEventListener('click', closeLogout); $('#lo-cancel').addEventListener('click', closeLogout);
+addEventListener('keydown', e => { if (e.key === 'Escape') closeLogout(); });
+$('#lo-form').addEventListener('submit', e => {
+  e.preventDefault(); const v = $('#lo-pin').value, fail = m => { $('#lo-err').textContent = m; $('#lo-err').classList.remove('hidden'); };
+  if (Date.now() < pinLock) return fail(`Too many attempts. Try again in ${Math.ceil((pinLock - Date.now()) / 1000)} seconds.`);
+  if (v !== sess.pin) { $('#lo-pin').value = ''; if (++pinFails >= 5) { pinFails = 0; pinLock = Date.now() + 30000; return fail('Too many attempts. Try again in 30 seconds.'); } return fail('Incorrect PIN.'); }
+  pinFails = 0; closeLogout(); sess = null; go('login');
+});
 $('#switch').addEventListener('click', () => go('home'));
 
 /* ---------- Camera ---------- */
@@ -957,7 +974,7 @@ function openPay(id, s, slip, ro) {
   $('#pm-title').textContent = slip ? 'Payslip' : 'Payroll details';
   $('#pm-body').innerHTML = `<div><div class="font-medium">${esc(e.name)}</div><div class="muted">${id} · ${esc(e.pos)}</div><div class="muted text-xs mt-1">Pay period: ${fmR(s)} · <span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></div></div>
   <div><h3 class="font-medium mb-2">Attendance summary</h3><dl class="space-y-1 border-t hair pt-2">${line('Scheduled days', c.days)}${line('Days present', c.present)}${line('Late', c.late)}${line('Absent', c.absent)}${line('Total hours', fmtHM(c.mins))}</dl></div>
-  <div><h3 class="font-medium mb-2">Payroll</h3><dl class="space-y-1 border-t hair pt-2">${line('Rate', peso(c.rate) + '/hr')}${line('Regular pay (' + fmtHM(c.reg) + ')', peso(c.basic))}${line('Gross pay', peso(c.gross))}${c.ds.map(x => line(`${esc(dedName(x.type))} <span class="text-xs">(${fmtDate(x.date)})</span>`, '− ' + num(x.amount))).join('')}${line('Total deductions', peso(c.ded))}<div class="border-t hair pt-2">${line('NET PAY', peso(c.net), 1)}</div></dl></div>
+  <div><h3 class="font-medium mb-2">Payroll</h3><dl class="space-y-1 border-t hair pt-2">${line('Rate', peso(c.rate) + '/hr')}${line('Gross pay', peso(c.gross))}${c.ds.map(x => line(`${esc(dedName(x.type))} <span class="text-xs">(${fmtDate(x.date)})</span>`, '− ' + num(x.amount))).join('')}${line('Total deductions', peso(c.ded))}<div class="border-t hair pt-2">${line('NET PAY', peso(c.net), 1)}</div></dl></div>
   ${c.lates.length ? `<div><h3 class="font-medium mb-2">Late attendance</h3><ul class="space-y-2">${c.lates.map(l => `<li class="card p-3"><div>${l.d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${fmtMin(l.tin)}</div><div class="muted text-xs">Scheduled ${fmtMin(l.sin)} · Late by ${l.tin - l.sin} min</div></li>`).join('')}</ul></div>` : ''}`;
   const nx = PAY_NEXT[st], a = $('#pm-act'); a.classList.toggle('hidden', !(nx && !slip && !ro)); // always a real boolean: toggle(x, undefined) flips instead of forcing // reports are read-only
   if (nx) a.textContent = nx[1];
@@ -1001,9 +1018,9 @@ function renderReports() {
   const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
   $('#r-rows').innerHTML = part.length ? part.map(({ id, e, c, st }) => `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
-    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3">${hrs2(c.reg)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
+    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
     <td class="pr-3"><span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></td>
-    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button> <button class="ghost !py-1 !px-2 text-xs" data-rp="${id}" ${slipOk(st) ? '' : 'disabled title="Available once payroll is approved"'}>View payslip</button></td></tr>`).join('')
+    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button></td></tr>`).join('')
     : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
   $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#r-pager').innerHTML = dpager(rPage, pages);
@@ -1013,7 +1030,7 @@ function renderReports() {
 ['#r-per', '#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).addEventListener('input', () => { rPage = 1; renderReports(); }));
 $('#r-reset').addEventListener('click', () => { $('#r-per').value = '';['#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).value = ''); rPage = 1; renderReports(); });
 $('#r-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { rPage = +b.dataset.p; renderReports(); } });
-$('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, rView.s, false, true); else if (b.dataset.rp) psGoto(b.dataset.rp, rView.s); });
+$('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, rView.s, false, true); });
 $('#r-exp').addEventListener('click', e => { e.stopPropagation(); $('#r-menu').classList.toggle('hidden'); });
 addEventListener('click', () => $('#r-menu').classList.add('hidden'));
 addEventListener('afterprint', () => document.body.classList.remove('print-report'));
@@ -1022,8 +1039,8 @@ $('#r-menu').addEventListener('click', e => {
   if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
   if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); window.print(); return; }
   const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
-  const head = ['Employee ID', 'Employee Name', 'Position', 'Pay Period', 'Regular Hours', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
-  const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.reg), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
+  const head = ['Employee ID', 'Employee Name', 'Position', 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
+  const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.mins), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
   const t = k => rView.rows.reduce((x, r) => x + r.c[k], 0).toFixed(2);
   lines.push(['TOTAL', '', '', per, '', t('gross'), t('ded'), t('net'), '']);
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + [head, ...lines].map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
@@ -1056,7 +1073,6 @@ function psHtml(id, s, st) {
   <dl class="ps-info"><dt>Employee Name</dt><dd>: ${esc(e.name)}</dd><dt>Employee ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(weekEnd(s))}</dd></dl>
   <h3>1. Attendance summary</h3><table><thead><tr><th>Date</th><th>Day</th><th>Time in</th><th>Time out</th><th class="r">Total hours</th></tr></thead><tbody>${att}<tr class="ps-tot"><td colspan="4" class="r">Total Hours Worked</td><td class="r">${fmtHM(c.mins)}</td></tr></tbody></table>
   <div class="ps-cols"><div><h3>2. Earnings / gross pay</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>
-    <tr><td>Basic Pay (${peso(c.rate)}/hr × ${fmtHM(c.reg)})</td><td class="r">${num(c.basic)}</td></tr>
     <tr class="ps-tot"><td>GROSS PAY</td><td class="r">${peso(c.gross)}</td></tr></tbody></table></div>
   <div><h3>3. Deductions</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>${ded}<tr class="ps-tot"><td>TOTAL DEDUCTIONS</td><td class="r">${peso(c.ded)}</td></tr></tbody></table></div></div>
   <div class="ps-net"><span>NET PAY</span><span>${peso(c.net)}</span></div>

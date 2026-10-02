@@ -326,7 +326,7 @@
       <div class="card p-4 mt-4">
         <div class="flex flex-wrap items-center justify-between gap-2"><h2 class="font-medium">Payroll records</h2><p id="r-count" class="muted text-sm"></p></div>
         <div class="overflow-auto mt-2"><table class="w-full text-sm" style="min-width:1000px">
-          <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Regular hrs</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal no-print">Actions</th></tr></thead>
+          <thead class="muted text-left text-xs uppercase tracking-wide"><tr><th class="py-2 font-normal pr-3">Employee ID</th><th class="font-normal pr-3">Employee name</th><th class="font-normal pr-3">Position</th><th class="font-normal pr-3">Pay period</th><th class="font-normal pr-3">Total hrs worked</th><th class="font-normal pr-3">Gross pay (₱)</th><th class="font-normal pr-3">Deductions (₱)</th><th class="font-normal pr-3">Net pay (₱)</th><th class="font-normal pr-3">Status</th><th class="font-normal no-print">Actions</th></tr></thead>
           <tbody id="r-rows"></tbody></table></div>
         <div id="r-pager" class="flex gap-2 justify-end mt-4 no-print"></div></div>
       <div id="r-sum" class="card p-4 mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4"></div>
@@ -535,6 +535,16 @@
   </div>
 </div>
 <div id="card-sheet" aria-hidden="true"></div>
+
+<!-- LOG OUT: PIN CONFIRMATION -->
+<div id="logout-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="lo-form" class="card w-full max-w-sm p-6 space-y-4" autocomplete="off">
+    <div class="flex items-start justify-between gap-3"><div><h2 class="text-xl font-semibold">Log out</h2><p class="muted text-sm mt-1">Enter your 6-digit PIN to log out.</p></div><button type="button" id="lo-x" class="ghost !px-3" aria-label="Close">✕</button></div>
+    <div><label class="lbl" for="lo-pin">PIN</label><input id="lo-pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input text-center text-xl tracking-wide" placeholder="••••••"></div>
+    <p id="lo-err" class="text-sm hidden" style="color:var(--err)"></p>
+    <div class="flex justify-end gap-2"><button type="button" id="lo-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Log out</button></div>
+  </form>
+</div>
 
 <button id="theme" class="theme-btn" aria-label="Switch to dark mode" title="Switch theme"></button>
 
