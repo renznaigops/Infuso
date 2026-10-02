@@ -98,6 +98,26 @@ thead th { font-weight: 600 !important; font-size: .8rem; color: var(--muted); }
 td { vertical-align: middle; }
 tbody tr.border-t:hover { background: color-mix(in srgb, var(--bg) 75%, transparent); }
 
+/* Table rows slide in from the left each time a table re-renders (staggered, capped) */
+main tbody tr { animation: row-slide-in .42s cubic-bezier(.22, .61, .36, 1) both; }
+main tbody tr:nth-child(2) { animation-delay: .04s; }
+main tbody tr:nth-child(3) { animation-delay: .08s; }
+main tbody tr:nth-child(4) { animation-delay: .12s; }
+main tbody tr:nth-child(5) { animation-delay: .16s; }
+main tbody tr:nth-child(6) { animation-delay: .20s; }
+main tbody tr:nth-child(7) { animation-delay: .24s; }
+main tbody tr:nth-child(8) { animation-delay: .28s; }
+main tbody tr:nth-child(9) { animation-delay: .32s; }
+main tbody tr:nth-child(n+10) { animation-delay: .36s; }
+@keyframes row-slide-in { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { main tbody tr { animation: none; } }
+@media print { main tbody tr { animation: none; } }
+
+/* Settings preferences: <html data-motion> / <html data-density> (set by applyCfg) */
+:root[data-motion="reduce"] * { animation: none !important; transition: none !important; }
+:root[data-density="compact"] td, :root[data-density="compact"] th { padding-top: .3rem; padding-bottom: .3rem; }
+:root[data-density="compact"] main { padding: .9rem; }
+
 [id$="-modal"] > .card { border-radius: var(--r-lg); box-shadow: 0 24px 60px -16px rgba(35,22,12,.4); }
 
 .toast { animation: toast-in .25s ease; }

@@ -40,6 +40,24 @@ const fmtTime = d => new Date(d).toLocaleTimeString('en-PH', { hour: '2-digit', 
 const initials = n => n.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 const go = h => { if (location.hash === '#/' + h) route(); else location.hash = '#/' + h; };
 
+/* ---------- Settings (persisted preferences, stored under 'cfg') ---------- */
+const CFG_DEF = {
+  address: 'Bulacan, Philippines', contact: '', email: '', tin: '', // business profile (name lives on the account)
+  grace: 15, blockUnsched: true,                                    // attendance rules
+  fallbackRate: 80, psNote: 'Thank you for your hard work!', psSignatory: 'Authorized Signature', // payroll defaults
+  notifyLate: true, notifyMin: 0,                                  // dashboard bell
+  requirePin: true,                                                // ask for the 6-digit PIN before the admin area
+  reducedMotion: false, density: 'comfortable',                    // appearance
+};
+const CFG = Object.assign({}, CFG_DEF, store.get('cfg', {}) || {});
+const saveCfg = () => store.set('cfg', CFG);
+const bizAddr = () => CFG.address || CFG_DEF.address; // business address shown on payslips and the header
+function applyCfg() { // appearance flags live on <html data-*> so a reload keeps the same look
+  document.documentElement.dataset.motion = CFG.reducedMotion ? 'reduce' : 'full';
+  document.documentElement.dataset.density = CFG.density === 'compact' ? 'compact' : 'comfortable';
+}
+applyCfg();
+
 let sess = null, pending = null, stage = 2, stream = null, camToken = 0, raf = null, lastScan = { c: null, t: 0 };
 
 /* ---------- One-time migration: staff IDs EMP-### → STF-### ---------- */
@@ -86,7 +104,7 @@ const schedChanged = (id, d) => { // true when an edit made this day differ from
   return (b.in ?? null) !== (s.in ?? null) || (b.out ?? null) !== (s.out ?? null);
 };
 const startOf = id => getSched(id, new Date()).in ?? 1e9; // scheduled start today (minutes), or 1e9 when not working
-const GRACE = 15; // minutes after scheduled start before time in counts as late
+let GRACE = CFG.grace; // minutes after scheduled start before time in counts as late (editable in Settings)
 function isLateNow(id, ts = Date.now()) { // minutes late past scheduled start (0 when on time / not scheduled)
   const s = startOf(id); if (s > 1e8) return 0;
   const d = new Date(ts), m = d.getHours() * 60 + d.getMinutes();
@@ -125,13 +143,14 @@ function paintTheme() {
   const dark = document.documentElement.dataset.theme === 'dark', b = $('#theme');
   b.textContent = dark ? '☀️' : '🌙';
   b.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  const sel = $('#set-theme'); if (sel) sel.value = dark ? 'dark' : 'light'; // keep the Settings picker in step
 }
-$('#theme').addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = next;
-  try { localStorage.setItem('theme', next); } catch (e) { }
+function setTheme(mode) {
+  document.documentElement.dataset.theme = mode === 'dark' ? 'dark' : 'light';
+  try { localStorage.setItem('theme', document.documentElement.dataset.theme); } catch (e) { }
   paintTheme();
-});
+}
+$('#theme').addEventListener('click', () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
 paintTheme();
 
 /* ---------- Auth (client-side demo only) ---------- */
@@ -325,7 +344,7 @@ function handleCode(code) {
   if (EMP[code].draft) { toast(EMP[code].name + '’s setup isn’t complete yet. Ask your manager.', 'err'); return; }
   if (!EMP[code].active) { toast(EMP[code].name + ' is inactive.', 'err'); return; }
   const sc = getSched(code, new Date()); // no shift today (day off / leave): block time in, but still allow time out for someone already clocked in
-  if (sc.in == null && nextType(code) === 'in') { toast(`${EMP[code].name} isn’t scheduled today (${TYPE_LABEL[sc.t]}). Ask your manager to update the schedule.`, 'err'); return; }
+  if (CFG.blockUnsched && sc.in == null && nextType(code) === 'in') { toast(`${EMP[code].name} isn’t scheduled today (${TYPE_LABEL[sc.t]}). Ask your manager to update the schedule.`, 'err'); return; }
   const today = new Date().toDateString(); // max 4 scans a day: time in, break out, break in, time out
   if (logs().filter(x => x.id === code && new Date(x.ts).toDateString() === today).length >= 4) { toast(EMP[code].name + ' has already completed all 4 scans today.', 'err'); return; }
   pending = code; go('verify');
@@ -378,11 +397,12 @@ function lateNotifs() { // today's late time-ins, newest first — employee reas
   return t.filter(x => x.type === 'in' && EMP[x.id] && EMP[x.id].active && !seen.has(x.id) && seen.add(x.id))
     .map(x => {
       const d = new Date(x.ts), m = d.getHours() * 60 + d.getMinutes(), s = startOf(x.id);
-      return m > s + GRACE ? { ...x, mins: m - s, sin: s } : null;
+      const mins = m - s; return m > s + GRACE && mins >= (CFG.notifyMin || 0) ? { ...x, mins, sin: s } : null;
     }).filter(Boolean).sort((a, b) => b.ts - a.ts);
 }
 function renderBell() {
   const panel = $('#bell-panel'); if (!panel) return;
+  if (!CFG.notifyLate) { $('#bell-dot').classList.add('hidden'); panel.innerHTML = '<p class="muted text-sm">Late-arrival alerts are turned off in Settings.</p>'; return; }
   const items = lateNotifs();
   $('#bell-dot').classList.toggle('hidden', !items.length);
   panel.innerHTML = items.length ? `<div class="w-full text-left space-y-2 max-h-80 overflow-auto">`
@@ -393,7 +413,7 @@ function renderBell() {
     + `</div>` : '<p class="muted text-sm">No notifications</p>';
 }
 function renderDash() {
-  $('#d-biz').textContent = sess.business; $('#d-av').textContent = initials(sess.name);
+  $('#d-biz').textContent = sess.business; $('#d-addr').textContent = bizAddr(); $('#d-av').textContent = initials(sess.name);
   $('#d-hi').textContent = 'Hello, ' + sess.name.split(' ')[0] + '!';
   const today = new Date().toDateString();
   const t = logs().filter(x => new Date(x.ts).toDateString() === today);
@@ -475,7 +495,7 @@ function renderChart(todayData) {
   $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" role="img" aria-label="Attendance over the last 7 days">${s}</svg>`;
   riseBars($$('#chart .bar-anim')); // freshly built bars, so the rise replays every time the dashboard renders
 }
-$('#reset').addEventListener('click', async () => {
+async function resetDemo() {
   const ok = await confirmCard({
     title: 'Reset demo data?',
     msg: 'This restores the sample staff, schedules, attendance logs, payroll and deductions, and removes anything you changed. This can’t be undone.',
@@ -486,7 +506,8 @@ $('#reset').addEventListener('click', async () => {
   Object.keys(EMP).forEach(k => delete EMP[k]); Object.assign(EMP, defaultEmps()); saveEmps();
   resetPay(); pSel.clear(); hSel = null;
   store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset.');
-});
+}
+$('#reset').addEventListener('click', resetDemo);
 
 /* ---------- Demo QR codes ---------- */
 function qrSvg(text) {
@@ -850,7 +871,7 @@ $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefau
    Automatic: Tardiness is DERIVED from attendRecord() (Attendance + Schedule), never stored,
    so it always matches the Attendance page. Manual: Cash Advance, Uniform Fee, Lost ID, Other are stored.
    Absences are NOT deducted: payroll pays only hours worked (avoids double-deducting). */
-const DEF_RATE = 80, MAX_DAYS = 92; // fallback ₱/hr for staff without a rate; max range
+let DEF_RATE = CFG.fallbackRate; const MAX_DAYS = 92; // fallback ₱/hr for staff without a rate (editable in Settings); max range
 const DED_TYPES = { tardiness: 'Tardiness', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
 const DED_MANUAL = ['tardiness', 'advance', 'uniform', 'lostid']; // fixed types shown in the filter and in Add deduction (Tardiness is also generated automatically); "Other" is added last and lets the admin type a new one
 const DED_BADGE = { tardiness: 'b-err', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
@@ -1282,14 +1303,14 @@ function psHtml(id, s, st) {
   }).join('');
   const ded = Object.entries(g).map(([t, v]) => `<tr><td>${esc(dedName(t))}</td><td class="r">${num(v)}</td></tr>`).join('') || '<tr><td>No deductions</td><td class="r">0.00</td></tr>';
   return `<div class="ps">${st === 'released' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet. Release it from Payroll once payroll is processed.</div>'}
-  <div class="ps-head"><div><h2>STAFF PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">Bulacan, Philippines</div></div></div>
+  <div class="ps-head"><div><h2>STAFF PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">${esc(bizAddr())}</div>${CFG.contact ? `<div class="mu">${esc(CFG.contact)}</div>` : ''}</div></div>
   <dl class="ps-info"><dt>Staff Name</dt><dd>: ${esc(e.name)}</dd><dt>Staff ID</dt><dd>: ${id}</dd><dt>Position</dt><dd>: ${esc(e.pos)}</dd><dt>Pay Period</dt><dd>: ${longD(s)} – ${longD(weekEnd(s))}</dd><dt>Pay Date</dt><dd>: ${longD(weekEnd(s))}</dd></dl>
   <h3>1. Attendance summary</h3><table><thead><tr><th>Date</th><th>Day</th><th>Time in</th><th>Time out</th><th class="r">Total hours</th></tr></thead><tbody>${att}<tr class="ps-tot"><td colspan="4" class="r">Total Hours Worked</td><td class="r">${fmtHM(c.mins)}</td></tr></tbody></table>
   <div class="ps-cols"><div><h3>2. Earnings / gross pay</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>
     <tr class="ps-tot"><td>GROSS PAY</td><td class="r">${peso(c.gross)}</td></tr></tbody></table></div>
   <div><h3>3. Deductions</h3><table><thead><tr><th>Description</th><th class="r">Amount (₱)</th></tr></thead><tbody>${ded}<tr class="ps-tot"><td>TOTAL DEDUCTIONS</td><td class="r">${peso(c.ded)}</td></tr></tbody></table></div></div>
   <div class="ps-net"><span>NET PAY</span><span>${peso(c.net)}</span></div>
-  <div class="ps-sig"><span>Thank you for your hard work!</span><span>Authorized Signature</span></div></div>`;
+  <div class="ps-sig"><span>${esc(CFG.psNote)}</span><span>${esc(CFG.psSignatory)}</span></div></div>`;
 }
 function psGoto(id, s) { psSel = { id, k: dkey(s) }; go('payslips'); }
 function renderPayslips() {
@@ -1349,16 +1370,132 @@ $('#burger').addEventListener('click', () => { collapsed = !collapsed; applySide
 overlay.addEventListener('click', () => { collapsed = true; applySide(); });
 addEventListener('resize', () => { collapsed = !isDesk(); applySide(); });
 
+/* ---------- Settings page ---------- */
+const APP_VER = 'v1.0';
+const BK_KEYS = ['acct', 'emps', 'sched', 'logs', 'deds', 'dedTypes', 'pay', 'paysnap', 'cfg', 'theme', 'remember'];
+function storageUsed() { let n = 0; BK_KEYS.forEach(k => n += (localStorage.getItem(k) || '').length); return n; }
+function paintDedManager() { // custom types only; the built-in ones are fixed
+  const w = $('#set-dedlist'); if (!w) return;
+  w.innerHTML = DED_CUSTOM.length
+    ? DED_CUSTOM.map(c => `<li class="flex items-center justify-between gap-2 py-1.5 border-b hair last:border-0"><span>${esc(c.label)}</span><button type="button" class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-dedrm="${esc(c.k)}">Remove</button></li>`).join('')
+    : '<li class="muted text-sm py-1">No custom types yet. Add one here, or via “Other” when creating a deduction.</li>';
+}
+function renderSettings() {
+  if (!$('#set-biz')) return; // page markup not present
+  $('#set-biz').value = (sess && sess.business) || bizName();
+  $('#set-name').value = (sess && sess.name) || '';
+  $('#set-email').value = (sess && sess.email) || CFG.email || '';
+  $('#set-addr').value = CFG.address; $('#set-contact').value = CFG.contact; $('#set-tin').value = CFG.tin;
+  $('#set-grace').value = GRACE; $('#set-block').checked = CFG.blockUnsched;
+  $('#set-rate').value = DEF_RATE; $('#set-note').value = CFG.psNote; $('#set-sign').value = CFG.psSignatory;
+  $('#set-require').checked = CFG.requirePin;
+  $('#set-notify').checked = CFG.notifyLate; $('#set-notifymin').value = CFG.notifyMin;
+  $('#set-motion').checked = CFG.reducedMotion; $('#set-density').value = CFG.density;
+  $('#set-theme').value = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  $('#set-pw-old').value = $('#set-pw-new').value = $('#set-pw-cf').value = '';
+  $('#set-pin-old').value = $('#set-pin-new').value = $('#set-pin-cf').value = '';
+  $('#set-pw-err').classList.add('hidden'); $('#set-pin-err').classList.add('hidden');
+  paintDedManager();
+  const kb = storageUsed() / 1024;
+  $('#set-storage').textContent = kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(2)} MB`;
+  $('#set-uname').textContent = (sess && sess.username) || 'admin';
+  $('#set-remember').checked = !!store.get('remember', '');
+  $('#set-ver').textContent = APP_VER;
+}
+const setBump = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
+setBump('#set-profile', 'submit', e => { // business profile -> account (name) + cfg (the rest)
+  e.preventDefault();
+  const biz = $('#set-biz').value.trim() || 'InfusoPay';
+  if (sess) { sess.business = biz; sess.name = $('#set-name').value.trim() || sess.name; sess.email = $('#set-email').value.trim(); store.set('acct', sess); }
+  CFG.address = $('#set-addr').value.trim() || CFG_DEF.address;
+  CFG.contact = $('#set-contact').value.trim(); CFG.email = $('#set-email').value.trim(); CFG.tin = $('#set-tin').value.trim();
+  saveCfg(); renderDash(); renderSettings(); toast('Business profile saved.');
+});
+setBump('#set-grace', 'change', e => { CFG.grace = Math.min(120, Math.max(0, parseInt(e.target.value, 10) || 0)); GRACE = CFG.grace; saveCfg(); e.target.value = GRACE; toast('Grace period updated.'); });
+setBump('#set-block', 'change', e => { CFG.blockUnsched = e.target.checked; saveCfg(); });
+setBump('#set-rate', 'change', e => { CFG.fallbackRate = Math.max(0, parseFloat(e.target.value) || 0); DEF_RATE = CFG.fallbackRate; saveCfg(); e.target.value = DEF_RATE; });
+setBump('#set-note', 'input', e => { CFG.psNote = e.target.value || CFG_DEF.psNote; saveCfg(); });
+setBump('#set-sign', 'input', e => { CFG.psSignatory = e.target.value || CFG_DEF.psSignatory; saveCfg(); });
+setBump('#set-require', 'change', e => { CFG.requirePin = e.target.checked; saveCfg(); if (!CFG.requirePin) unlocked = true; toast(CFG.requirePin ? 'The admin area will ask for the PIN.' : 'The admin area no longer asks for the PIN.'); });
+setBump('#set-notify', 'change', e => { CFG.notifyLate = e.target.checked; saveCfg(); renderBell(); });
+setBump('#set-notifymin', 'change', e => { CFG.notifyMin = Math.min(180, Math.max(0, parseInt(e.target.value, 10) || 0)); saveCfg(); e.target.value = CFG.notifyMin; renderBell(); });
+setBump('#set-theme', 'change', e => setTheme(e.target.value));
+setBump('#set-motion', 'change', e => { CFG.reducedMotion = e.target.checked; saveCfg(); applyCfg(); });
+setBump('#set-density', 'change', e => { CFG.density = e.target.value; saveCfg(); applyCfg(); });
+setBump('#set-pw', 'submit', e => { // change password (demo: checked against the stored account)
+  e.preventDefault();
+  const a = store.get('acct', SEED), cur = $('#set-pw-old').value, nw = $('#set-pw-new').value, cf = $('#set-pw-cf').value, err = $('#set-pw-err');
+  const fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+  err.classList.add('hidden');
+  if (cur !== (sess ? sess.password : a.password)) return fail('Current password is incorrect.');
+  if (nw.length < 6) return fail('Use a new password with at least 6 characters.');
+  if (nw !== cf) return fail('New passwords don’t match.');
+  if (sess) { sess.password = nw; store.set('acct', sess); } else { a.password = nw; store.set('acct', a); }
+  renderSettings(); toast('Password updated.');
+});
+setBump('#set-pin', 'submit', e => { // change the 6-digit payroll PIN
+  e.preventDefault();
+  const cur = $('#set-pin-old').value, nw = $('#set-pin-new').value, cf = $('#set-pin-cf').value, err = $('#set-pin-err');
+  const fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+  err.classList.add('hidden');
+  if (sess.pin && cur !== sess.pin) return fail('Current PIN is incorrect.');
+  if (!/^\d{6}$/.test(nw)) return fail('The PIN must be exactly 6 digits.');
+  if (nw !== cf) return fail('PINs don’t match.');
+  sess.pin = nw; store.set('acct', sess); renderSettings(); toast('Payroll PIN updated.');
+});
+setBump('#set-ded', 'submit', e => { // add a custom deduction type (same store key as the Deductions page)
+  e.preventDefault();
+  const name = $('#set-ded-name').value.trim().replace(/\s+/g, ' '), low = name.toLowerCase();
+  if (!name) { toast('Type the deduction name.', 'err'); return; }
+  if (low === 'other') { toast('Type a specific name instead of “Other”.', 'err'); return; }
+  if (Object.values(DED_TYPES).some(v => v.toLowerCase() === low)) { toast('That deduction type already exists.', 'err'); return; }
+  const k = 'c' + Date.now().toString(36); DED_CUSTOM.push({ k, label: name }); DED_TYPES[k] = name; DED_BADGE[k] = 'b-muted';
+  store.set('dedTypes', DED_CUSTOM); refreshDedTypes(k); $('#set-ded-name').value = ''; paintDedManager(); toast('Deduction type added.');
+});
+setBump('#set-dedlist', 'click', e => {
+  const b = e.target.closest('[data-dedrm]'); if (!b) return;
+  const k = b.dataset.dedrm, c = DED_CUSTOM.find(x => x.k === k);
+  confirmCard({ title: 'Remove deduction type?', msg: `Remove “${c ? c.label : k}” from the list? Existing records that use it will show as “Other”.`, ok: 'Remove', tone: 'danger' }).then(ok => {
+    if (!ok) return;
+    const i = DED_CUSTOM.findIndex(x => x.k === k); if (i >= 0) DED_CUSTOM.splice(i, 1);
+    delete DED_TYPES[k]; delete DED_BADGE[k]; store.set('dedTypes', DED_CUSTOM); refreshDedTypes(); paintDedManager(); toast('Deduction type removed.');
+  });
+});
+setBump('#set-export', 'click', () => { // backup every local key as a single JSON file
+  const data = {}; BK_KEYS.forEach(k => { const v = localStorage.getItem(k); if (v != null) data[k] = v; });
+  const blob = new Blob([JSON.stringify({ app: 'InfusoPay', version: APP_VER, at: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = `infusopay-backup-${dkey(new Date())}.json`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  toast('Backup downloaded.');
+});
+setBump('#set-import-btn', 'click', () => $('#set-import').click());
+setBump('#set-import', 'change', e => { // restore a backup, then reload so every view rebuilds from it
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = async () => {
+    let data = null;
+    try { const obj = JSON.parse(r.result); data = obj && obj.data ? obj.data : null; } catch (err) { data = null; }
+    e.target.value = '';
+    if (!data || typeof data !== 'object') { toast('That file is not a valid InfusoPay backup.', 'err'); return; }
+    const ok = await confirmCard({ title: 'Restore from backup?', msg: 'This replaces the current data on this device with the backup, then reloads the page.', ok: 'Restore', tone: 'warn' });
+    if (!ok) return;
+    Object.entries(data).forEach(([k, v]) => { try { localStorage.setItem(k, v); } catch (err) { } });
+    toast('Backup restored. Reloading…'); setTimeout(() => location.reload(), 600);
+  };
+  r.readAsText(f);
+});
+setBump('#set-reset', 'click', resetDemo);
+setBump('#set-remember-clear', 'click', () => { store.set('remember', ''); $('#lu').value = ''; $('#set-remember').checked = false; toast('Saved login cleared.'); });
 /* ---------- Router ---------- */
-const SHELL = ['dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips'];
+const SHELL = ['dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips', 'settings'];
 function route() {
   let v = location.hash.slice(2) || (sess ? 'home' : 'login');
-  if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips', 'qr'].includes(v)) v = sess ? 'home' : 'login';
+  if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips', 'settings', 'qr'].includes(v)) v = sess ? 'home' : 'login';
   if (v !== 'login' && v !== 'register' && !sess) v = 'login'; // everything sits behind login
   if ((v === 'login' || v === 'register') && sess) v = 'home';
   if (v === 'verify' && !pending) v = 'scan';
   if (!SHELL.includes(v)) unlocked = false; // leaving payroll locks it again
-  if (SHELL.includes(v) && !unlocked) { pinTarget = v; v = 'pin'; }
+  if (CFG.requirePin && SHELL.includes(v) && !unlocked) { pinTarget = v; v = 'pin'; }
   $$('.view').forEach(x => x.classList.remove('on'));
   const shell = SHELL.includes(v); // both pages share the sidebar layout
   $('#v-' + (shell ? 'dashboard' : v)).classList.add('on');
@@ -1377,8 +1514,9 @@ function route() {
     $('#page-payroll').classList.toggle('hidden', v !== 'payroll');
     $('#page-reports').classList.toggle('hidden', v !== 'reports');
     $('#page-payslips').classList.toggle('hidden', v !== 'payslips');
+    $('#page-settings').classList.toggle('hidden', v !== 'settings');
     $$('.nav a').forEach(a => a.classList.toggle('active', a.dataset.page === v));
-    if (v === 'dashboard') renderDash(); else if (v === 'employees') renderStaff(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips(); else renderAttendance();
+    if (v === 'dashboard') renderDash(); else if (v === 'employees') renderStaff(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips(); else if (v === 'settings') renderSettings(); else renderAttendance();
     collapsed = !isDesk(); applySide();
   }
 }

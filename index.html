@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/tailwind.css">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=4">
 </head>
 <body>
 
@@ -191,7 +191,7 @@
   <aside id="sidebar" class="fixed lg:static z-40 inset-y-0 left-0 w-60 shrink-0 border-r hair flex flex-col p-4" style="padding-top:calc(1rem + env(safe-area-inset-top,0px))">
     <div class="brand"><img src="img/logo-white.png" alt="" class="logo-w brand-logo"><img src="img/logo-brown.png" alt="" class="logo-b brand-logo">InfusoPay</div>
     <nav class="nav mt-4 space-y-1 flex-1">
-      <a href="#/dashboard" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a><a href="#/employees" data-page="employees"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Staff</a><a href="#/schedules" data-page="schedules"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Schedules</a><a href="#/attendance" data-page="attendance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Attendance</a><a href="#/deductions" data-page="deductions"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>Deductions</a><a href="#/payroll" data-page="payroll"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Payroll</a><a href="#/reports" data-page="reports"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Reports</a><a href="#/payslips" data-page="payslips"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>Payslips</a><a href="#/dashboard" data-soon><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Settings</a>
+      <a href="#/dashboard" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a><a href="#/employees" data-page="employees"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Staff</a><a href="#/schedules" data-page="schedules"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Schedules</a><a href="#/attendance" data-page="attendance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Attendance</a><a href="#/deductions" data-page="deductions"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>Deductions</a><a href="#/payroll" data-page="payroll"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Payroll</a><a href="#/reports" data-page="reports"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Reports</a><a href="#/payslips" data-page="payslips"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>Payslips</a><a href="#/settings" data-page="settings"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Settings</a>
     </nav>
     <img src="img/login-cafe.svg" alt="" class="side-art">
     <button id="switch" class="ghost text-sm mb-2">Switch module</button>
@@ -201,7 +201,7 @@
   <div class="flex-1 min-w-0 flex flex-col">
     <header class="h-16 shrink-0 flex items-center gap-3 px-4 border-b hair" style="background:var(--surface)">
       <button id="burger" class="ghost !px-3" aria-label="Toggle navigation">☰</button>
-      <div class="leading-tight min-w-0 truncate"><div class="font-medium truncate" id="d-biz"></div><div class="muted text-xs">Bulacan</div></div>
+      <div class="leading-tight min-w-0 truncate"><div class="font-medium truncate" id="d-biz"></div><div class="muted text-xs" id="d-addr">Bulacan</div></div>
       <div class="ml-auto flex items-center gap-4"><div class="text-right text-sm leading-tight hidden sm:block"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
         <div class="relative">
           <button class="ghost !px-3 relative" aria-label="Notifications" id="bell" aria-haspopup="true" aria-expanded="false">🔔<span id="bell-dot" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full" style="background:var(--err)"></span></button>
@@ -415,6 +415,122 @@
         </div>
       </div>
     </main>
+    <!-- SETTINGS PAGE -->
+    <main id="page-settings" class="hidden flex-1 overflow-auto p-4 sm:p-6">
+      <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Settings</span></nav>
+      <div class="mt-3"><h1 class="text-2xl font-semibold">Settings</h1><p class="muted text-sm mt-1">Business details, account security, attendance rules and preferences. Saved on this device.</p></div>
+
+      <div class="grid lg:grid-cols-2 gap-4 mt-5">
+        <form id="set-profile" class="card p-5" autocomplete="off">
+          <h2 class="font-medium">Business profile</h2>
+          <p class="muted text-xs mt-1">Shown on the dashboard header, ID cards and payslips.</p>
+          <div class="grid sm:grid-cols-2 gap-4 mt-4">
+            <div class="sm:col-span-2"><label class="lbl" for="set-biz">Business name</label><input id="set-biz" class="input"></div>
+            <div><label class="lbl" for="set-name">Owner / manager</label><input id="set-name" class="input"></div>
+            <div><label class="lbl" for="set-email">Email</label><input id="set-email" type="email" class="input"></div>
+            <div class="sm:col-span-2"><label class="lbl" for="set-addr">Address</label><input id="set-addr" class="input"></div>
+            <div><label class="lbl" for="set-contact">Contact number</label><input id="set-contact" class="input" inputmode="tel" placeholder="0917 123 4567"></div>
+            <div><label class="lbl" for="set-tin">TIN / Employer ID</label><input id="set-tin" class="input" placeholder="000-000-000"></div>
+          </div>
+          <div class="flex justify-end mt-4"><button class="btn" type="submit">Save profile</button></div>
+        </form>
+
+        <div class="card p-5">
+          <h2 class="font-medium">Appearance</h2>
+          <p class="muted text-xs mt-1">How the app looks on this device.</p>
+          <div class="grid sm:grid-cols-2 gap-4 mt-4">
+            <div><label class="lbl" for="set-theme">Theme</label><select id="set-theme" class="input"><option value="light">Light</option><option value="dark">Dark</option></select></div>
+            <div><label class="lbl" for="set-density">Table density</label><select id="set-density" class="input"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+          </div>
+          <label class="flex items-center gap-2 text-sm mt-4"><input id="set-motion" type="checkbox"> Reduce motion (turn off animations)</label>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4 mt-4">
+        <div class="card p-5">
+          <h2 class="font-medium">Attendance rules</h2>
+          <p class="muted text-xs mt-1">Applied to Attendance and Tardiness deductions.</p>
+          <div class="mt-4 max-w-[14rem]"><label class="lbl" for="set-grace">Grace period (minutes)</label><input id="set-grace" type="number" min="0" max="120" class="input"></div>
+          <label class="flex items-center gap-2 text-sm mt-4"><input id="set-block" type="checkbox"> Block time in when the staff is not scheduled</label>
+          <p class="muted text-xs mt-3">Each staff records up to 4 scans a day: time in, break out, break in, time out.</p>
+        </div>
+
+        <div class="card p-5">
+          <h2 class="font-medium">Payroll &amp; payslip</h2>
+          <p class="muted text-xs mt-1">Defaults used when generating pay and printing payslips.</p>
+          <div class="grid sm:grid-cols-2 gap-4 mt-4">
+            <div><label class="lbl" for="set-rate">Fallback rate (₱/hour)</label><input id="set-rate" type="number" min="0" step="0.01" class="input"></div>
+            <div><label class="lbl" for="set-sign">Payslip signatory</label><input id="set-sign" class="input" maxlength="40"></div>
+            <div class="sm:col-span-2"><label class="lbl" for="set-note">Payslip footer note</label><input id="set-note" class="input" maxlength="80"></div>
+          </div>
+          <p class="muted text-xs mt-3">The pay period is fixed to Mon–Sun, ending on the payroll date.</p>
+        </div>
+      </div>
+      <div class="grid lg:grid-cols-2 gap-4 mt-4">
+        <div class="card p-5">
+          <h2 class="font-medium">Account &amp; security</h2>
+          <p class="muted text-xs mt-1">Change how you sign in and protect the admin area.</p>
+          <form id="set-pw" class="grid sm:grid-cols-2 gap-3 mt-4" autocomplete="off">
+            <div class="sm:col-span-2"><label class="lbl" for="set-pw-old">Current password</label><input id="set-pw-old" type="password" class="input"></div>
+            <div><label class="lbl" for="set-pw-new">New password</label><input id="set-pw-new" type="password" class="input" placeholder="At least 6 characters"></div>
+            <div><label class="lbl" for="set-pw-cf">Confirm new password</label><input id="set-pw-cf" type="password" class="input"></div>
+            <p id="set-pw-err" class="sm:col-span-2 text-sm hidden" style="color:var(--err)"></p>
+            <div class="sm:col-span-2 flex justify-end"><button class="btn" type="submit">Update password</button></div>
+          </form>
+          <form id="set-pin" class="grid sm:grid-cols-2 gap-3 mt-6 pt-4 border-t hair" autocomplete="off">
+            <div class="sm:col-span-2"><label class="lbl" for="set-pin-old">Current payroll PIN <span class="muted font-normal">(leave blank if none)</span></label><input id="set-pin-old" type="password" inputmode="numeric" maxlength="6" class="input text-center tracking-wide"></div>
+            <div><label class="lbl" for="set-pin-new">New 6-digit PIN</label><input id="set-pin-new" type="password" inputmode="numeric" maxlength="6" class="input text-center tracking-wide"></div>
+            <div><label class="lbl" for="set-pin-cf">Confirm PIN</label><input id="set-pin-cf" type="password" inputmode="numeric" maxlength="6" class="input text-center tracking-wide"></div>
+            <p id="set-pin-err" class="sm:col-span-2 text-sm hidden" style="color:var(--err)"></p>
+            <div class="sm:col-span-2 flex justify-end"><button class="btn" type="submit">Update PIN</button></div>
+          </form>
+          <label class="flex items-center gap-2 text-sm mt-5 pt-4 border-t hair"><input id="set-require" type="checkbox"> Ask for the 6-digit PIN before opening the admin area</label>
+        </div>
+
+        <div class="card p-5">
+          <h2 class="font-medium">Notifications</h2>
+          <p class="muted text-xs mt-1">Control the late-arrival alerts on the dashboard bell.</p>
+          <label class="flex items-center gap-2 text-sm mt-4"><input id="set-notify" type="checkbox"> Show late-arrival notifications</label>
+          <div class="mt-4 max-w-[16rem]"><label class="lbl" for="set-notifymin">Only notify when late by at least (minutes)</label><input id="set-notifymin" type="number" min="0" max="180" class="input"></div>
+          <p class="muted text-xs mt-3">Late means beyond the grace period set in Attendance rules.</p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4 mt-4">
+        <div class="card p-5">
+          <h2 class="font-medium">Deduction types</h2>
+          <p class="muted text-xs mt-1">Custom types added here or from Deductions. The built-in types can’t be removed.</p>
+          <ul id="set-dedlist" class="text-sm mt-3"></ul>
+          <form id="set-ded" class="flex gap-2 mt-4" autocomplete="off">
+            <input id="set-ded-name" class="input" maxlength="30" placeholder="e.g. Meal allowance recovery">
+            <button class="btn shrink-0" type="submit">Add type</button>
+          </form>
+        </div>
+
+        <div class="card p-5">
+          <h2 class="font-medium">Data &amp; privacy</h2>
+          <p class="muted text-xs mt-1">Everything is stored in this browser only — nothing leaves the device.</p>
+          <dl class="grid grid-cols-2 gap-3 text-sm mt-4 p-3 rounded-xl" style="background:var(--bg)">
+            <div><dt class="muted">Storage used</dt><dd id="set-storage" class="font-medium">—</dd></div>
+            <div><dt class="muted">Signed in as</dt><dd id="set-uname" class="font-medium">—</dd></div>
+          </dl>
+          <label class="flex items-center gap-2 text-sm mt-3"><input id="set-remember" type="checkbox" disabled> Remember my username on this device</label>
+          <div class="flex flex-wrap gap-2 mt-4">
+            <button type="button" id="set-export" class="ghost">Export backup</button>
+            <button type="button" id="set-import-btn" class="ghost">Import backup</button>
+            <input id="set-import" type="file" accept="application/json,.json" class="hidden">
+            <button type="button" id="set-remember-clear" class="ghost">Clear saved login</button>
+            <button type="button" id="set-reset" class="ghost" style="color:var(--err)">Reset demo data</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-5 mt-4">
+        <h2 class="font-medium">About</h2>
+        <p class="muted text-sm mt-2">InfusoPay — Payroll &amp; Attendance prototype for a café in Bulacan, Philippines. Version <span id="set-ver" class="font-medium" style="color:var(--text)">v1.0</span>.</p>
+        <p class="muted text-xs mt-2">Demo login: admin / admin123 · Payroll PIN: 123456. This is a demonstration prototype, not a working system.</p>
+      </div>
+    </main>
   </div>
 </div>
 </section>
@@ -595,6 +711,6 @@
 
 <div id="toasts" class="fixed left-0 right-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none" style="top:calc(1rem + env(safe-area-inset-top,0px))"></div>
 
-<script src="js/app.js"></script>
+<script src="js/app.js?v=3"></script>
 </body>
 </html>
