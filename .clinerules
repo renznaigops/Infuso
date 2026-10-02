@@ -1,0 +1,33 @@
+# InfusoPay Prototype — Cline Rules
+
+## Project Overview
+- Static demo prototype: Payroll & Attendance for a café (InfusoPay Café, Bulacan, PH).
+- NO build, NO npm, NO backend, NO framework. Open `index.html` directly in browser.
+- Hash-routed SPA in one page: `#/home`, `#/login`, `#/register`, `#/scan`, `#/verify`, `#/dashboard` (+ dashboard tabs via JS).
+- Persistence only via `localStorage` (`emps`, schedules, logs, payroll, etc.). Never add fetch/API calls.
+
+## Stack & Files
+- `index.html` (555 lines): all views + modals. Tailwind layout classes + custom components.
+- `js/app.js` (`'use strict'`, ~1174 lines): all logic. Keep in this one file, no modules/bundlers.
+- `css/styles.css`: design tokens + components (`--bg`, `--surface`, `--line`, `--text`, `--muted`, `--gold`, etc.). Light default, dark via `:root[data-theme="dark"]`.
+- `css/tailwind.css`: vendored/precompiled — DO NOT edit by hand.
+- CDN allowed: `jsQR`, `qrcode-generator` only. Do not add new deps without asking.
+
+## Code Conventions — Must Follow
+- JS: `'use strict'` top, helpers `$`, `$$`, `store.get/set`, `esc()`, `go()`, `toast()`, `fmtTime/fmtMin/fmtHM`, `dkey/addDays/weekEnd`, `initials`.
+- Employees: `EMP[id]` = `{name,pos,contact,hired,shift,active,start,sch,photo?,rate}`. IDs `EMP-001...`. `POSITIONS` is ONLY `['Kitchen Staff','Dine Staff']` — normalize old values to these.
+- Shifts: `SHIFTS = [[480,'8:00 AM – 5:00 PM'],[600,'10:00 AM – 7:00 PM'],[900,'3:00 PM – 12:00 AM']]`. `SHIFT_TYPES = morning/afternoon/night` + `off/leave`. `TYPE_BY_SHIFT = ['morning','afternoon','night']`.
+- Schedules: `SCH[dateKey][empId] = {t,in,out}` per-day overrides, else default shift. Past dates cannot be edited. Today cannot be set to `off` if employee already scanned in.
+- Attendance: max 4 scans/day `[tin, break-out, break-in, tout]`. `tout` only valid when n>=4. `hrs` excludes break. Status: `present/late/absent/upcoming/off/leave` with `ATT_BADGE`. `GRACE = 15` min. Demo history is deterministic via `hsh(id+key)` — preserve that.
+- Payroll/Payslip: weekly Mon-Sun `weekEnd(s)`, `payGet(id,s)` = `{mins,gross,ded,net,ds,log}`. Statuses `PAY_ST / PS_ST` (`none/draft/review/approved/processed/released`). Preview shows `ps-note` until `released`.
+- Formatting: PH mobile `09XX XXX XXXX` via `fmtPhone`, money `₱` + `num()/toFixed(2)`, dates `en-US` long, times `en-PH` 2-digit. Escape all user strings with `esc()`.
+- CSS: Use Tailwind utilities for layout + `.card/.btn/.ghost/.input/.lbl/.badge/.b-ok/.b-warn/.b-err/.view.on/.avatar/.ps/.idc` components. Always use `var(--*)` tokens, support both themes, respect `safe-area-inset`. Print styles for `#card-sheet` and `body.print-report` must not break.
+- HTML: Keep `id`s stable (e.g. `v-home/v-login`, `login-form/lu/lp`, `a-rows/s-rows`, `pay-modal/pm-body`, `s-form/s-in/s-out`, `dm-form`, `card-modal/cm-body`, `logout-modal/lo-pin`). New UI must wire to existing `route()` and view `.on` logic.
+
+## Workflow for Cline
+1. Plan first: state files/ids/functions you will touch.
+2. Read `index.html` + `js/app.js` relevant section before editing; prefer small `old_text` replacements.
+3. Use absolute paths `c:\Users\ralfy\Desktop\Infuso\...`.
+4. Never add `package.json`, TS, React/Vue, build step, or change storage keys/schema without migration (`Object.values(EMP).forEach` normalization pattern).
+5. Keep responsive (mobile-first `sm:/lg:/xl:`), accessible (`label for=`, `aria-label`, `focus-visible`), and demo-safe (confirm PIN modals for logout, toasts for feedback).
+6. Validate: re-read edited file, run `Get-Content` check if needed, and instruct user to open `index.html` + test hash route (login `admin/admin123`, PIN `123456`). No `npm test` exists.

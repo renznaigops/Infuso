@@ -7,6 +7,12 @@
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||'light'}catch(e){document.documentElement.dataset.theme='light'}</script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="icon" type="image/png" sizes="256x256" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/tailwind.css">
 <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -15,7 +21,7 @@
 <!-- HOME: module choice (index) -->
 <section id="v-home" class="view">
 <div class="min-h-screen max-w-3xl mx-auto px-6 flex flex-col justify-center py-14">
-  <div class="flex items-center justify-between"><div class="text-xl font-semibold">InfusoPay</div><button id="home-out" class="ghost text-sm">Log out</button></div>
+  <div class="flex items-center justify-between"><div class="logo-lockup text-xl font-semibold"><img src="img/logo-white.png" alt="" class="logo-w"><img src="img/logo-brown.png" alt="" class="logo-b">InfusoPay</div><button id="home-out" class="ghost text-sm">Log out</button></div>
   <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight mt-8">Where would you like to go?</h1>
   <p id="home-hi" class="muted mt-3 max-w-md"></p>
   <div class="grid sm:grid-cols-2 gap-4 mt-10">
@@ -37,8 +43,9 @@
 <!-- LOGIN (admin) -->
 <section id="v-login" class="view">
 <div class="grid lg:grid-cols-2 min-h-screen">
-  <div class="hidden lg:flex flex-col justify-between p-12 border-r hair" style="background:var(--surface)">
-    <div class="text-xl font-semibold">InfusoPay</div>
+  <div class="login-aside hidden lg:flex flex-col justify-between p-12">
+    <div class="logo-lockup text-xl font-semibold"><img src="img/logo-white.png" alt="" class="logo-w"><img src="img/logo-brown.png" alt="" class="logo-b">InfusoPay</div>
+    <img src="img/login-cafe.svg" alt="" class="login-art">
     <div><h2 class="text-3xl font-semibold leading-tight max-w-sm">Simple payroll for a growing café.</h2>
     <p class="muted mt-3 max-w-xs">Attendance, schedules and payslips in one calm place.</p></div>
     <p class="muted text-xs">Demonstration prototype, not a working system.</p>
@@ -107,7 +114,7 @@
 <section id="v-scan" class="view">
 <div class="min-h-screen flex flex-col">
   <header class="flex items-center justify-between px-6 h-16 border-b hair" style="background:var(--surface)">
-    <span class="font-semibold">InfusoPay</span>
+    <span class="logo-lockup font-semibold"><img src="img/logo-white.png" alt="" class="logo-w"><img src="img/logo-brown.png" alt="" class="logo-b">InfusoPay</span>
     <div class="flex items-center gap-4"><div class="text-right text-sm leading-tight"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
     <a href="#/home" class="ghost text-sm">Back to home</a></div>
   </header>
@@ -140,7 +147,7 @@
 <section id="v-verify" class="view">
 <div class="min-h-screen flex flex-col">
   <header class="flex items-center justify-between px-6 h-16 border-b hair" style="background:var(--surface)">
-    <span class="font-semibold">InfusoPay</span>
+    <span class="logo-lockup font-semibold"><img src="img/logo-white.png" alt="" class="logo-w"><img src="img/logo-brown.png" alt="" class="logo-b">InfusoPay</span>
     <div class="flex items-center gap-4"><div class="text-right text-sm leading-tight"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
     <a href="#/home" class="ghost text-sm">Back to home</a></div>
   </header>
@@ -175,11 +182,12 @@
 <section id="v-dashboard" class="view h-full">
 <div class="flex h-full overflow-hidden relative">
   <div id="overlay" class="fixed inset-0 bg-black/30 z-30 hidden"></div>
-  <aside id="sidebar" class="fixed lg:static z-40 inset-y-0 left-0 w-60 shrink-0 border-r hair flex flex-col p-4" style="background:var(--surface);padding-top:calc(1rem + env(safe-area-inset-top,0px))">
-    <div class="px-2 py-2 font-semibold">InfusoPay</div>
+  <aside id="sidebar" class="fixed lg:static z-40 inset-y-0 left-0 w-60 shrink-0 border-r hair flex flex-col p-4" style="padding-top:calc(1rem + env(safe-area-inset-top,0px))">
+    <div class="brand"><img src="img/logo-white.png" alt="" class="logo-w brand-logo"><img src="img/logo-brown.png" alt="" class="logo-b brand-logo">InfusoPay</div>
     <nav class="nav mt-4 space-y-1 flex-1">
-      <a href="#/dashboard" data-page="dashboard">Dashboard</a><a href="#/employees" data-page="employees">Employees</a><a href="#/schedules" data-page="schedules">Schedules</a><a href="#/attendance" data-page="attendance">Attendance</a><a href="#/deductions" data-page="deductions">Deductions</a><a href="#/payroll" data-page="payroll">Payroll</a><a href="#/reports" data-page="reports">Reports</a><a href="#/payslips" data-page="payslips">Payslips</a><a href="#/dashboard" data-soon>Settings</a>
+      <a href="#/dashboard" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</a><a href="#/employees" data-page="employees"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Employees</a><a href="#/schedules" data-page="schedules"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Schedules</a><a href="#/attendance" data-page="attendance"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Attendance</a><a href="#/deductions" data-page="deductions"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>Deductions</a><a href="#/payroll" data-page="payroll"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Payroll</a><a href="#/reports" data-page="reports"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Reports</a><a href="#/payslips" data-page="payslips"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>Payslips</a><a href="#/dashboard" data-soon><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>Settings</a>
     </nav>
+    <img src="img/login-cafe.svg" alt="" class="side-art">
     <button id="switch" class="ghost text-sm mb-2">Switch module</button>
     <button id="reset" class="ghost text-sm mb-2">Reset demo data</button>
     <button id="logout" class="ghost text-sm">Log out</button>
@@ -196,10 +204,10 @@
       <h1 class="text-xl font-semibold" id="d-hi"></h1>
       <p class="muted text-sm mt-1">Here’s today’s overview.</p>
       <div id="stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5"></div>
-      <div class="grid lg:grid-cols-3 gap-4 mt-4">
-        <div class="card p-5 lg:col-span-2 min-w-0"><h2 class="font-medium">Today’s attendance</h2>
+      <div class="grid lg:grid-cols-2 gap-4 mt-4">
+        <div class="card p-5 min-w-0"><h2 class="font-medium">Attendance overview</h2><p class="muted text-xs mt-1">Last 7 days</p><div id="chart" class="mt-3"></div><div class="flex flex-wrap gap-4 text-xs muted mt-2"><span><i style="color:var(--brand)">●</i> On time</span><span><i style="color:var(--gold)">●</i> Late</span><span><i style="color:var(--err)">●</i> Absent</span></div></div>
+        <div class="card p-5 min-w-0"><h2 class="font-medium">Today’s attendance</h2>
           <div class="overflow-auto max-h-72 mt-3"><table class="w-full text-sm"><thead class="muted text-left"><tr><th class="py-2 font-normal">ID</th><th class="font-normal">Name</th><th class="font-normal">Time in</th><th class="font-normal">Status</th></tr></thead><tbody id="rows"></tbody></table></div></div>
-        <div class="card p-5 min-w-0"><h2 class="font-medium">Attendance overview</h2><p class="muted text-xs mt-1">Last 7 days</p><div id="chart" class="mt-3"></div><div class="flex flex-wrap gap-4 text-xs muted mt-2"><span><i style="color:var(--ok)">●</i> On time</span><span><i style="color:var(--warn)">●</i> Late</span><span><i style="color:var(--err)">●</i> Absent</span></div></div>
       </div>
       <div class="grid md:grid-cols-3 gap-4 mt-4">
         <div class="card p-5"><h2 class="font-medium">Payroll status</h2><p class="text-2xl font-semibold mt-2">2</p><p class="muted text-sm">payrolls waiting for approval</p></div>

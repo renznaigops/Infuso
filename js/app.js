@@ -298,13 +298,15 @@ $('#bell').addEventListener('click', () => toast('No new notifications.'));
 function renderChart(todayData) {
   const total = Math.max(15, activeIds().length), data = [...HIST, todayData], days = [];
   for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(d.toLocaleDateString('en-US', { weekday: 'short' })); }
-  const W = 420, H = 190, pl = 28, pb = 24, pt = 8, bw = 30, gap = (W - pl - 7 * bw) / 7, sy = v => (H - pb - pt) * v / total;
-  let s = '';
+  const W = 420, H = 190, pl = 28, pb = 24, pt = 8, bw = 42, gap = (W - pl - 7 * bw) / 7, sy = v => (H - pb - pt) * v / total;
+  let s = '<defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient></defs>'; // each bar fades toward the baseline
   Array.from({ length: Math.floor(total / 5) + 1 }, (_, k) => k * 5).forEach(v => { const y = H - pb - sy(v); s += `<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${pl - 6}" y="${y + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`; });
   data.forEach(([p, l, a], i) => {
     const x = pl + gap / 2 + i * (bw + gap); let y = H - pb;
-    s += `<g><title>${days[i]}: ${p} on time, ${l} late, ${a} absent</title>`;
-    [[p, 'var(--ok)'], [l, 'var(--warn)'], [a, 'var(--err)']].forEach(([v, c]) => { const h = sy(v); y -= h; s += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}" rx="2"/>`; });
+    const tot = sy(p + l + a);
+    s += `<mask id="fm${i}"><rect x="${x}" y="${H - pb - tot}" width="${bw}" height="${tot}" fill="url(#fg)"/></mask><g><title>${days[i]}: ${p} on time, ${l} late, ${a} absent</title><g mask="url(#fm${i})">`;
+    [[p, 'var(--brand)'], [l, 'var(--gold)'], [a, 'var(--err)']].forEach(([v, c]) => { const h = sy(v); y -= h; s += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}" rx="3"/>`; });
+    s += '</g>';
     s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${days[i]}</text></g>`;
   });
   $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full" role="img" aria-label="Attendance over the last 7 days">${s}</svg>`;
