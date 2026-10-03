@@ -204,7 +204,7 @@
       <div class="leading-tight min-w-0 truncate"><div class="font-medium truncate" id="d-biz"></div><div class="muted text-xs" id="d-addr">Bulacan</div></div>
       <div class="ml-auto flex items-center gap-4"><div class="text-right text-sm leading-tight hidden sm:block"><div class="muted text-xs" data-clock="date"></div><div class="font-medium" data-clock="time"></div></div>
         <div class="relative">
-          <button class="ghost !px-3 relative" aria-label="Notifications" id="bell" aria-haspopup="true" aria-expanded="false">🔔<span id="bell-dot" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full" style="background:var(--err)"></span></button>
+          <button class="ghost !px-3 relative grid place-items-center" aria-label="Notifications" id="bell" aria-haspopup="true" aria-expanded="false"><svg class="bell-ico" viewBox="0 0 24 24" aria-hidden="true"><path class="bell-body" d="M12 2.5C8.6 2.5 6.2 5 6.2 8.4v3.4c0 1.4-.5 2.7-1.4 3.8l-1.2 1.5c-.5.6-.1 1.6.7 1.6h15.4c.8 0 1.2-1 .7-1.6l-1.2-1.5c-.9-1.1-1.4-2.4-1.4-3.8V8.4C17.8 5 15.4 2.5 12 2.5Z"/><path class="bell-clap" d="M12 21.5c1.4 0 2.5-1.1 2.5-2.5h-5c0 1.4 1.1 2.5 2.5 2.5Z"/></svg><span id="bell-dot" class="hidden" aria-hidden="true"></span></button>
           <div id="bell-panel" class="card hidden" role="status"><p class="muted text-sm">No notifications</p></div>
         </div>
         <div class="w-9 h-9 rounded-full grid place-items-center text-sm font-medium" style="background:var(--bg)" id="d-av"></div></div>
@@ -333,11 +333,16 @@
             <div id="r-menu" class="card hidden absolute right-0 z-30 p-2 shadow-lg min-w-[11rem]" style="top:calc(100% + .25rem)"><button class="ghost w-full text-left text-sm" style="border:0" data-exp="pdf">Export as PDF</button><button class="ghost w-full text-left text-sm" style="border:0" data-exp="csv">Export as Excel/CSV</button></div></div></div>
       </div>
       <div class="card p-4 mt-5 no-print"><div class="flex flex-wrap items-center gap-2">
+        <label for="r-scope" class="muted text-sm">Report view</label>
+        <select id="r-scope" class="input w-full sm:!w-52" aria-label="Report view"><option value="period">By payroll period</option><option value="month">Monthly</option><option value="year">Yearly</option></select>
         <select id="r-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
+        <select id="r-month" class="input w-full sm:!w-44 hidden" aria-label="Month"></select>
+        <select id="r-year" class="input w-full sm:!w-44 hidden" aria-label="Year"></select>
         <select id="r-emp" class="input w-full sm:!w-52" aria-label="Staff"></select>
         <select id="r-pos" class="input w-full sm:!w-44" aria-label="Position"></select>
         <select id="r-st" class="input w-full sm:!w-44" aria-label="Payroll status"><option value="">All Statuses</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
-        <input id="r-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search reports"></div></div>
+        <input id="r-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search reports"></div>
+        <p class="muted text-xs mt-2">Monthly and Yearly add up every pay period in that range per staff, so the totals, the table and the export all follow the view you pick.</p></div>
       <p id="r-label" class="muted text-sm mt-4"></p>
       <div id="r-stats" class="grid grid-cols-2 lg:grid-cols-5 gap-4 mt-2"></div>
       <div class="card p-4 mt-4">
@@ -348,7 +353,7 @@
         <div id="r-pager" class="flex gap-2 justify-end mt-4 no-print"></div></div>
       <div id="r-sum" class="card p-4 mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4"></div>
       <div class="card p-4 mt-4 no-print"><div class="font-medium text-sm">Payroll report workflow</div>
-        <div class="flex flex-wrap items-center gap-3 mt-3 text-sm muted"><span class="step on">1</span>Select pay period<span>→</span><span class="step on">2</span>Apply filters<span>→</span><span class="step on">3</span>Review records<span>→</span><span class="step on">4</span>View details / payslip<span>→</span><span class="step on">5</span>Export report</div></div>
+        <div class="flex flex-wrap items-center gap-3 mt-3 text-sm muted"><span class="step on">1</span>Pick period, month or year<span>→</span><span class="step on">2</span>Apply filters<span>→</span><span class="step on">3</span>Review records<span>→</span><span class="step on">4</span>View details / payslip<span>→</span><span class="step on">5</span>Export report</div></div>
     </main>
     <!-- PAYSLIPS PAGE -->
     <main id="page-payslips" class="hidden flex-1 overflow-auto p-4 sm:p-6">
@@ -358,7 +363,8 @@
         <div class="card p-4 min-w-0">
           <div class="flex flex-wrap items-center gap-2">
             <select id="ps-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
-            <button type="button" id="ps-all-dl" class="btn text-sm">Download all payslips</button>
+            <div class="relative"><button type="button" id="ps-all-dl" class="btn text-sm" aria-haspopup="true" aria-expanded="false">Download all payslips ▾</button>
+            <div id="ps-all-menu" class="card hidden absolute z-30 p-2 shadow-lg min-w-[13rem]" style="top:calc(100% + .25rem)"><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-all="pdf">All as PDF (one file)</button><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-all="docx">All as Word (.docx)</button></div></div>
             <input id="ps-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search payslips">
           </div>
           <div class="overflow-auto mt-3"><table class="w-full text-sm min-w-[560px]">
@@ -369,7 +375,8 @@
         </div>
         <div id="ps-panel" class="hidden min-w-0">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2"><button type="button" id="ps-close" class="ghost text-sm">✕ Close</button>
-            <div class="flex gap-2"><button type="button" id="ps-dl" class="btn text-sm">Download Payslip</button></div></div>
+            <div class="flex gap-2"><div class="relative"><button type="button" id="ps-dl" class="btn text-sm" aria-haspopup="true" aria-expanded="false">Download payslip ▾</button>
+              <div id="ps-menu" class="card hidden absolute right-0 z-30 p-2 shadow-lg min-w-[13rem]" style="top:calc(100% + .25rem)"><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-fmt="pdf">Download as PDF</button><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-fmt="docx">Download as Word (.docx)</button></div></div></div></div>
           <div id="ps-doc"></div>
         </div>
       </div>

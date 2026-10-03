@@ -402,9 +402,11 @@ function lateNotifs() { // today's late time-ins, newest first — employee reas
 }
 function renderBell() {
   const panel = $('#bell-panel'); if (!panel) return;
-  if (!CFG.notifyLate) { $('#bell-dot').classList.add('hidden'); panel.innerHTML = '<p class="muted text-sm">Late-arrival alerts are turned off in Settings.</p>'; return; }
+  const dot = $('#bell-dot');
+  if (!CFG.notifyLate) { dot.classList.add('hidden'); dot.textContent = ''; panel.innerHTML = '<p class="muted text-sm">Late-arrival alerts are turned off in Settings.</p>'; return; }
   const items = lateNotifs();
-  $('#bell-dot').classList.toggle('hidden', !items.length);
+  dot.textContent = items.length ? (items.length > 9 ? '9+' : String(items.length)) : ''; // unread count on the badge
+  dot.classList.toggle('hidden', !items.length);
   panel.innerHTML = items.length ? `<div class="w-full text-left space-y-2 max-h-80 overflow-auto">`
     + `<p class="text-sm font-medium px-1">Late arrivals today (${items.length})</p>`
     + items.map(x => `<div class="card p-3"><div class="text-sm font-medium">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div>`
@@ -634,6 +636,21 @@ function squareThumb(src, w, h) { // 256px square JPEG keeps localStorage small
   return c.toDataURL('image/jpeg', .8);
 }
 
+/* Deleting staff must clear their rows in every module. Left behind, they become orphaned data, and a
+   later staff member given the same ID would inherit the deleted person's schedule overrides. */
+function purgeStaff(id) {
+  Object.keys(SCH).forEach(d => {
+    if (!SCH[d] || !SCH[d][id]) return;
+    delete SCH[d][id];
+    if (!Object.keys(SCH[d]).length) delete SCH[d]; // drop days left empty
+  });
+  saveSch();
+  store.set('logs', logs().filter(x => x.id !== id));
+  DED.splice(0, DED.length, ...DED.filter(x => x.id !== id));
+  saveDed();
+  Object.keys(PAY).forEach(k => { if (k.endsWith('|' + id)) { delete PAY[k]; delete SNAP[k]; } });
+  savePay();
+}
 $('#emp-rows').addEventListener('click', async e => {
   const k = e.target.closest('[data-csel]'); if (k) { k.checked ? eSel.add(k.dataset.csel) : eSel.delete(k.dataset.csel); return; }
   const b = e.target.closest('button'); if (!b) return;
@@ -642,8 +659,8 @@ $('#emp-rows').addEventListener('click', async e => {
   if (b.dataset.del) {
     const id = b.dataset.del, e = EMP[id];
     if (!e) return;
-    const ok = await confirmCard({ title: 'Delete staff?', msg: `Delete ${e.name} (${id})? Attendance, schedules and payroll history for this staff will be removed. This can’t be undone.`, ok: 'Delete', tone: 'danger' });
-    if (ok) { delete EMP[id]; eSel.delete(id); saveEmps(); renderStaff(); toast('Staff deleted.'); }
+    const ok = await confirmCard({ title: 'Delete staff?', msg: `Delete ${e.name} (${id})? Their schedules, attendance records, deductions and payroll records are removed too. This can’t be undone.`, ok: 'Delete', tone: 'danger' });
+    if (ok) { delete EMP[id]; eSel.delete(id); saveEmps(); purgeStaff(id); renderStaff(); toast('Staff deleted — schedules, attendance, deductions and payroll records were removed too.'); }
     return;
   }
 });
@@ -684,11 +701,19 @@ $('#x-form').addEventListener('submit', e => {
   const name = $('#x-name').value.trim(), rate = parseFloat($('#x-rate').value);
   if (!name || !(rate > 0)) { toast('Enter the name and a rate per hour.', 'err'); return; }
   const ph = fmtPhone($('#x-contact').value); if (!ph) { toast('Enter a valid mobile number, for example 0917 123 4567.', 'err'); return; }
+  const was = EMP[xId], active = $('#x-status').value === 'active';
+  // Deactivating someone mid-period drops their row out of the Current payroll list (only active staff are
+  // listed there), which would strand a payroll that still needs approving, processing or releasing.
+  if (was.active && !active) {
+    const inflight = Object.keys(PAY).filter(k => k.endsWith('|' + xId) && ['draft', 'review', 'approved'].includes(PAY[k]));
+    if (inflight.length) { toast(`${name} still has ${inflight.length} payroll record${inflight.length === 1 ? '' : 's'} waiting to be processed or released. Finish that first, then set them inactive.`, 'err'); return; }
+  }
   EMP[xId] = withShift({
-    ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: ph,
-    active: $('#x-status').value === 'active', photo: xPhoto
+    ...EMP[xId], name, pos: $('#x-pos').value, rate, contact: ph, active, photo: xPhoto
   });
-  saveEmps(); closeEdit(); renderStaff(); toast('Staff updated.');
+  saveEmps(); closeEdit(); renderStaff();
+  const back = was.rate !== rate ? reopenApproved(xId) : 0; // a new rate moves the figures, so payroll goes back for review
+  toast('Staff updated.' + (back ? ' The approved payroll was sent back for review.' : ''));
 });
 
 /* ---------- ID cards ---------- */
@@ -934,6 +959,12 @@ function reopenIfApproved(id, date) { // figures changed after sign-off, so the 
   const k = pKey(dedPeriod(date), id);
   if (PAY[k] !== 'approved') return false;
   PAY[k] = 'review'; savePay(); return true;
+}
+function reopenApproved(id) { // same rule for a staff change that moves the figures (a new hourly rate): every
+  // approved payroll for this staff goes back to review, otherwise the approved amount silently disagrees with Staff
+  const keys = Object.keys(PAY).filter(k => k.endsWith('|' + id) && PAY[k] === 'approved');
+  if (!keys.length) return 0;
+  keys.forEach(k => { PAY[k] = 'review'; }); savePay(); return keys.length;
 }
 function renderDeductions() {
   const custom = $('#d-per').value === 'custom', today = dkey(new Date());
@@ -1226,45 +1257,88 @@ const payClick = (e, s) => {
 $('#p-rows').addEventListener('click', e => payClick(e, curStart()));
 $('#hd-rows').addEventListener('click', e => payClick(e, new Date(hSel + 'T00:00')));
 
-/* ---------- Reports: read-only analysis of generated payroll (current period + history) ---------- */
+/* ---------- Reports: read-only analysis of generated payroll.
+   Three views over the same data: one payroll period, a whole month, or a whole year. A monthly or yearly
+   row adds up every pay period in that range for each staff, so the table, the stats and the export all
+   follow whichever view is on screen. */
 const hrs2 = m => (m / 60).toFixed(2);
-let rPage = 1, rView = { rows: [], s: null };
+let rPage = 1, rView = { rows: [], s: null, scope: 'period', key: '', label: '', starts: [] };
+const R_STAGE = ['none', 'draft', 'review', 'approved', 'processed', 'released']; // a combined row shows its earliest stage
+const payKeys = () => [...new Set([...Object.keys(PAY).map(k => k.slice(0, 10)), dkey(curStart())])].sort().reverse();
+const fmMon = v => new Date(v + '-01T00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const rN = n => `${n} pay period${n === 1 ? '' : 's'}`;
+function rScope() { // the view on screen, resolved to the pay periods it covers plus the matching previous range
+  const ks = payKeys(), sc = $('#r-scope').value;
+  if (sc === 'month') {
+    const v = $('#r-month').value || ks[0].slice(0, 7), [y, m] = v.split('-').map(Number), p = new Date(y, m - 2, 1);
+    const pv = `${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, '0')}`, st = ks.filter(k => k.slice(0, 7) === v);
+    return { sc, key: v, starts: st, prev: ks.filter(k => k.slice(0, 7) === pv), label: `${fmMon(v)} · ${rN(st.length)}` };
+  }
+  if (sc === 'year') {
+    const v = $('#r-year').value || ks[0].slice(0, 4), st = ks.filter(k => k.slice(0, 4) === v);
+    return { sc, key: v, starts: st, prev: ks.filter(k => k.slice(0, 4) === String(+v - 1)), label: `${v} · ${rN(st.length)}` };
+  }
+  const v = $('#r-per').value || ks[0], s = new Date(v + 'T00:00');
+  return { sc, key: v, starts: [v], prev: [dkey(addDays(s, -7))], label: `Pay period: ${fmR(s)}` };
+}
+function rRows(starts) { // one row per staff; a single period is payRows() as is, several periods are summed
+  if (!starts.length) return [];
+  if (starts.length === 1) return payRows(new Date(starts[0] + 'T00:00'), true).map(r => ({ ...r, lastK: starts[0], sts: [{ k: starts[0], st: r.st }] }));
+  const map = new Map();
+  starts.forEach(k => payRows(new Date(k + 'T00:00'), true).forEach(r => { // starts run newest → oldest
+    let a = map.get(r.id);
+    if (!a) { a = { id: r.id, e: r.e, lastK: k, sts: [], c: { rate: r.c.rate, mins: 0, gross: 0, ded: 0, net: 0, days: 0, present: 0, late: 0, absent: 0, ds: [], lates: [], log: [] } }; map.set(r.id, a); }
+    ['mins', 'gross', 'ded', 'net', 'days', 'present', 'late', 'absent'].forEach(x => { a.c[x] += r.c[x] || 0; });
+    a.c.rate = r.c.rate; a.c.ds = a.c.ds.concat(r.c.ds || []); a.c.lates = a.c.lates.concat(r.c.lates || []); a.c.log = a.c.log.concat(r.c.log || []);
+    a.sts.push({ k, st: r.st });
+  }));
+  return [...map.values()].map(a => ({ ...a, st: a.sts.reduce((w, x) => R_STAGE.indexOf(x.st) < R_STAGE.indexOf(w) ? x.st : w, 'released') }));
+}
 function renderReports() {
-  const ks = [...new Set([...Object.keys(PAY).map(k => k.slice(0, 10)), dkey(curStart())])].sort().reverse(), cur = $('#r-per').value;
+  const ks = payKeys(), sc = $('#r-scope').value, cp = $('#r-per').value, cm = $('#r-month').value, cy = $('#r-year').value;
   $('#r-per').innerHTML = ks.map(k => `<option value="${k}">${fmR(new Date(k + 'T00:00'))}${k === dkey(curStart()) ? ' (current)' : ''}</option>`).join('');
-  $('#r-per').value = ks.includes(cur) ? cur : (ks.find(k => payRows(new Date(k + 'T00:00'), true).length) || ks[0]); // default: latest period with records
-  const s = new Date($('#r-per').value + 'T00:00'), all = payRows(s, true), prev = payRows(addDays(s, -7), true);
-  $('#r-label').textContent = `Pay period: ${fmR(s)}`;
-  const ce = $('#r-emp').value, cp = $('#r-pos').value, poss = [...new Set(all.map(r => r.e.pos))].sort();
+  $('#r-per').value = ks.includes(cp) ? cp : (ks.find(k => payRows(new Date(k + 'T00:00'), true).length) || ks[0]);
+  const months = [...new Set(ks.map(k => k.slice(0, 7)))], years = [...new Set(ks.map(k => k.slice(0, 4)))]; // only ranges holding a pay period
+  $('#r-month').innerHTML = months.map(m => `<option value="${m}">${fmMon(m)}</option>`).join(''); $('#r-month').value = months.includes(cm) ? cm : months[0];
+  $('#r-year').innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join(''); $('#r-year').value = years.includes(cy) ? cy : years[0];
+  $('#r-per').classList.toggle('hidden', sc !== 'period');
+  $('#r-month').classList.toggle('hidden', sc !== 'month');
+  $('#r-year').classList.toggle('hidden', sc !== 'year');
+
+  const R = rScope(), all = rRows(R.starts), prev = rRows(R.prev);
+  $('#r-label').textContent = R.label;
+  const ce = $('#r-emp').value, cpz = $('#r-pos').value, poss = [...new Set(all.map(r => r.e.pos))].sort();
   $('#r-emp').innerHTML = '<option value="">All Staff</option>' + all.map(r => `<option value="${r.id}">${esc(r.e.name)}</option>`).join('');
   $('#r-emp').value = all.some(r => r.id === ce) ? ce : '';
   $('#r-pos').innerHTML = '<option value="">All Positions</option>' + poss.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-  $('#r-pos').value = poss.includes(cp) ? cp : '';
+  $('#r-pos').value = poss.includes(cpz) ? cpz : '';
   const q = $('#r-q').value.trim().toLowerCase(), ef = $('#r-emp').value, pf = $('#r-pos').value, sf = $('#r-st').value;
   const f = r => (!q || `${r.id} ${r.e.name}`.toLowerCase().includes(q)) && (!ef || r.id === ef) && (!pf || r.e.pos === pf) && (!sf || r.st === sf);
-  const rows = all.filter(f), pr = prev.filter(f); rView = { rows, s };
+  const rows = all.filter(f), pr = prev.filter(f);
+  rView = { rows, scope: sc, key: R.key, label: R.label, starts: R.starts, s: new Date(R.starts[0] + 'T00:00') };
   const sum = (l, k) => l.reduce((t, r) => t + r.c[k], 0), pending = rows.filter(r => r.st === 'review').length;
-  const dl = (cur, old, bad) => old > 0 ? `<span style="color:var(--${(cur >= old) !== !!bad ? 'ok' : 'err'})">${cur >= old ? '▲' : '▼'} ${Math.abs(Math.round((cur - old) / old * 100))}%</span> vs. previous period` : 'No previous period data';
-  $('#r-stats').innerHTML = [['Total staff', rows.length, 'for selected period'], ['Total gross pay', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))], ['Total deductions', peso(sum(rows, 'ded')), dl(sum(rows, 'ded'), sum(pr, 'ded'), 1)],
+  const unit = sc === 'month' ? 'month' : sc === 'year' ? 'year' : 'period';
+  const dl = (cur, old, bad) => old > 0 ? `<span style="color:var(--${(cur >= old) !== !!bad ? 'ok' : 'err'})">${cur >= old ? '▲' : '▼'} ${Math.abs(Math.round((cur - old) / old * 100))}%</span> vs. previous ${unit}` : `No previous ${unit} data`;
+  $('#r-stats').innerHTML = [['Total staff', rows.length, sc === 'period' ? 'for selected period' : `across ${rN(R.starts.length)}`], ['Total gross pay', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))], ['Total deductions', peso(sum(rows, 'ded')), dl(sum(rows, 'ded'), sum(pr, 'ded'), 1)],
   ['Total net pay', peso(sum(rows, 'net')), dl(sum(rows, 'net'), sum(pr, 'net'))], ['Total payroll cost', peso(sum(rows, 'gross')), dl(sum(rows, 'gross'), sum(pr, 'gross'))]]
     .map(([l, v, n]) => `<div class="card p-4"><div class="muted text-sm">${l}</div><div class="text-2xl font-semibold mt-1">${v}</div><div class="muted text-xs mt-1">${n}</div></div>`).join('');
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); rPage = Math.min(rPage, pages);
-  const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE);
-  $('#r-rows').innerHTML = part.length ? part.map(({ id, e, c, st }) => `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
+  const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE), comb = sc !== 'period';
+  $('#r-rows').innerHTML = part.length ? part.map(({ id, e, c, st, sts, lastK }) => `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
-    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap">${fmR(s)}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
-    <td class="pr-3"><span class="badge ${PAY_ST[st][0]}">${PAY_ST[st][1]}</span></td>
-    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}">View details</button></td></tr>`).join('')
-    : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
+    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap" title="${comb && sts.length > 1 ? esc(sts.map(x => `${fmR(new Date(x.k + 'T00:00'))}: ${PAY_ST[x.st][1]}`).join(' · ')) : ''}">${comb ? rN(sts.length) : fmR(new Date(lastK + 'T00:00'))}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
+    <td class="pr-3"><span class="badge ${PAY_ST[st][0]}"${comb && new Set(sts.map(x => x.st)).size > 1 ? ` title="Earliest stage across ${rN(sts.length)} — the approver still has work to do"` : ''}>${PAY_ST[st][1]}</span></td>
+    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}" data-k="${lastK}" ${comb ? 'title="Opens the most recent pay period in this range"' : ''}>${comb ? 'View latest' : 'View details'}</button></td></tr>`).join('')
+    : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : comb ? `No payroll has been generated for ${esc(R.label.split(' · ')[0])} yet. Go to Payroll and generate the pay periods you need.` : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
   $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#r-pager').innerHTML = dpager(rPage, pages);
   $('#r-sum').innerHTML = [['Total staff', rows.length], ['Total gross pay', peso(sum(rows, 'gross'))], ['Total deductions', peso(sum(rows, 'ded'))], ['Total net pay', peso(sum(rows, 'net'))], ['Pending review', pending]]
     .map(([l, v]) => `<div><div class="muted text-xs">${l}</div><div class="font-semibold text-lg">${v}</div></div>`).join('');
 }
-['#r-per', '#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).addEventListener('input', () => { rPage = 1; renderReports(); }));
-$('#r-reset').addEventListener('click', () => { $('#r-per').value = '';['#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).value = ''); rPage = 1; renderReports(); });
+['#r-scope', '#r-per', '#r-month', '#r-year', '#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).addEventListener('input', () => { rPage = 1; renderReports(); }));
+$('#r-reset').addEventListener('click', () => { $('#r-scope').value = 'period'; ['#r-emp', '#r-pos', '#r-st', '#r-q'].forEach(x => $(x).value = ''); rPage = 1; renderReports(); });
 $('#r-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { rPage = +b.dataset.p; renderReports(); } });
-$('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, rView.s, false, true); });
+$('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, new Date(b.dataset.k + 'T00:00'), false, true); });
 $('#r-exp').addEventListener('click', e => { e.stopPropagation(); $('#r-menu').classList.toggle('hidden'); });
 addEventListener('click', () => $('#r-menu').classList.add('hidden'));
 addEventListener('afterprint', () => document.body.classList.remove('print-report'));
@@ -1273,12 +1347,16 @@ $('#r-menu').addEventListener('click', e => {
   if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
   if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); window.print(); return; }
   const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
-  const head = ['Staff ID', 'Staff Name', 'Position', 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'], s = rView.s, per = `${dkey(s)} to ${dkey(weekEnd(s))}`;
-  const lines = rView.rows.map(({ id, e, c, st }) => [id, e.name, e.pos, per, hrs2(c.mins), c.gross.toFixed(2), c.ded.toFixed(2), c.net.toFixed(2), PAY_ST[st][1]]);
+  const comb = rView.scope !== 'period'; // the file always mirrors the view on screen
+  const head = ['Staff ID', 'Staff Name', 'Position', comb ? 'Pay Periods Covered' : 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'];
+  const per = r => comb ? `${dkey(new Date(r.sts[r.sts.length - 1].k + 'T00:00'))} to ${dkey(weekEnd(new Date(r.sts[0].k + 'T00:00')))}` : `${dkey(rView.s)} to ${dkey(weekEnd(rView.s))}`;
+  const lines = rView.rows.map(r => [r.id, r.e.name, r.e.pos, per(r), hrs2(r.c.mins), r.c.gross.toFixed(2), r.c.ded.toFixed(2), r.c.net.toFixed(2), PAY_ST[r.st][1]]);
   const t = k => rView.rows.reduce((x, r) => x + r.c[k], 0).toFixed(2);
-  lines.push(['TOTAL', '', '', per, '', t('gross'), t('ded'), t('net'), '']);
+  lines.push(['TOTAL', '', '', comb ? '' : per(rView.rows[0]), '', t('gross'), t('ded'), t('net'), '']);
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + [head, ...lines].map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
-  a.download = `payroll-report_${dkey(s)}_to_${dkey(weekEnd(s))}.csv`; a.click(); URL.revokeObjectURL(a.href); toast('Report exported.');
+  a.download = comb ? `payroll-report_${rView.scope === 'month' ? 'month_' : 'year_'}${rView.key}.csv` : `payroll-report_${dkey(rView.s)}_to_${dkey(weekEnd(rView.s))}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast(comb ? `${rView.label.split(' · ')[0]} report exported — every pay period in that range.` : 'Report exported.');
 });
 
 /* ---------- Payslips: list first; the payslip itself only opens after View ---------- */
@@ -1294,13 +1372,17 @@ function dayLog(id, s) {
   }
   return out;
 }
-function psHtml(id, s, st) {
+function psData(id, s) { // one source for the payslip numbers, so the screen, the PDF and the .docx can never disagree
   const e = EMP[id], c = payGet(id, s), log = c.log || dayLog(id, s), g = {};
   c.ds.forEach(x => g[x.type] = (g[x.type] || 0) + x.amount);
-  const att = log.map(l => {
-    const d = new Date(l.d + 'T00:00'), lbl = { off: 'Day off', leave: 'On leave', absent: 'Absent' }[l.st] || '—';
-    return `<tr><td>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td><td>${d.toLocaleDateString('en-US', { weekday: 'short' })}</td><td>${l.tin != null ? fmtMin(l.tin) : `<span class="mu">${lbl}</span>`}</td><td>${l.tout != null ? fmtMin(l.tout) : '—'}</td><td class="r">${l.tin != null ? fmtHM(l.hrs) : '—'}</td></tr>`;
-  }).join('');
+  return { e, c, log, g, days: log.map(l => {
+    const d = new Date(l.d + 'T00:00');
+    return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), day: d.toLocaleDateString('en-US', { weekday: 'short' }), tin: l.tin, tout: l.tout, hrs: l.hrs, lbl: { off: 'Day off', leave: 'On leave', absent: 'Absent' }[l.st] || '—' };
+  }) };
+}
+function psHtml(id, s, st) {
+  const { e, c, g, days } = psData(id, s);
+  const att = days.map(l => `<tr><td>${l.date}</td><td>${l.day}</td><td>${l.tin != null ? fmtMin(l.tin) : `<span class="mu">${l.lbl}</span>`}</td><td>${l.tout != null ? fmtMin(l.tout) : '—'}</td><td class="r">${l.tin != null ? fmtHM(l.hrs) : '—'}</td></tr>`).join('');
   const ded = Object.entries(g).map(([t, v]) => `<tr><td>${esc(dedName(t))}</td><td class="r">${num(v)}</td></tr>`).join('') || '<tr><td>No deductions</td><td class="r">0.00</td></tr>';
   return `<div class="ps">${st === 'released' ? '' : '<div class="ps-note">Preview only. This payslip has not been released yet. Release it from Payroll once payroll is processed.</div>'}
   <div class="ps-head"><div><h2>STAFF PAYSLIP</h2></div><div style="text-align:right"><div style="font-weight:700;font-size:1rem">${esc(bizName())}</div><div class="mu">${esc(bizAddr())}</div>${CFG.contact ? `<div class="mu">${esc(CFG.contact)}</div>` : ''}</div></div>
@@ -1336,17 +1418,69 @@ function renderPayslips() {
   $('#ps-panel').classList.toggle('hidden', !sel); $('#ps-wrap').classList.toggle('open', !!sel);
   if (sel) { $('#ps-doc').innerHTML = psHtml(sel.id, s, sel.st); $('#ps-dl').disabled = sel.st !== 'released'; }
 }
-function downloadSlip(id, s) {
-  const html = psHtml(id, s, 'released');
-  const blob = new Blob([`<!doctype html><html><head><meta charset="utf-8"><title>Payslip</title><style>${document.querySelector('style')?.textContent || ''}</style></head><body>${html}</body></html>`], { type: 'text/html' });
-  const url = URL.createObjectURL(blob), a = document.createElement('a');
-  a.href = url; a.download = `payslip-${id}-${dkey(s)}.html`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+/* ---------- Payslip download: PDF (print, same .ps markup as the screen) or Word (.docx) ---------- */
+/* A .docx is a ZIP of XML parts. We build it with a tiny stored-entry (uncompressed) ZIP writer, so there
+   is still no build step and no library; Word, LibreOffice and Google Docs all open the result. */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipFiles(files) { // [{ name, data }] -> Blob of a valid uncompressed zip
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  const dt = new Date(), dosT = (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >> 1), dosD = ((dt.getFullYear() - 1980) << 9) | ((dt.getMonth() + 1) << 5) | dt.getDate();
+  files.forEach(f => {
+    const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
+    const lh = new Uint8Array(30 + name.length), lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true); lv.setUint16(8, 0, true);
+    lv.setUint16(10, dosT, true); lv.setUint16(12, dosD, true); lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true);
+    lv.setUint32(22, data.length, true); lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true); lh.set(name, 30);
+    parts.push(lh, data);
+    const ch = new Uint8Array(46 + name.length), cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0x0800, true); cv.setUint16(10, 0, true);
+    cv.setUint16(12, dosT, true); cv.setUint16(14, dosD, true); cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true);
+    cv.setUint32(24, data.length, true); cv.setUint16(28, name.length, true); cv.setUint32(42, off, true); ch.set(name, 46);
+    central.push(ch); off += lh.length + data.length;
+  });
+  const cd = central.reduce((n, c) => n + c.length, 0), end = new Uint8Array(22), ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+  ev.setUint32(12, cd, true); ev.setUint32(16, off, true);
+  return new Blob([...parts, ...central, end], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 }
-function downloadAllPayslips() {
-  const k = $('#ps-per').value, s = new Date(k + 'T00:00'), rows = payRows(s, k !== dkey(curStart())).filter(r => r.st === 'released');
-  if (!rows.length) { toast('No released payslips are available for this pay period.', 'err'); return; }
-  rows.forEach((r, i) => setTimeout(() => downloadSlip(r.id, s), i * 120));
-  toast(`Downloading ${rows.length} released payslip${rows.length === 1 ? '' : 's'}.`);
+const xesc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+/* Word cell/table helpers: reproduce the .ps table look (beige header, bold totals, right-aligned money) */
+const wCell = (w, txt, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${o.span ? `<w:gridSpan w:val="${o.span}"/>` : ''}${o.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>` : ''}<w:tcMar><w:top w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/></w:tcMar></w:tcPr>`
+  + `<w:p><w:pPr>${o.align ? `<w:jc w:val="${o.align}"/>` : ''}<w:spacing w:after="0"/></w:pPr><w:r><w:rPr>${o.bold ? '<w:b/>' : ''}<w:color w:val="${o.color || '2B211B'}"/><w:sz w:val="${o.sz || 20}"/>${o.upper ? '<w:caps/>' : ''}</w:rPr><w:t xml:space="preserve">${xesc(txt)}</w:t></w:r></w:p></w:tc>`;
+const wP = (txt, o = {}) => `<w:p><w:pPr>${o.after ? `<w:spacing w:after="${o.after}"/>` : ''}${o.align ? `<w:jc w:val="${o.align}"/>` : ''}</w:pPr><w:r><w:rPr>${o.bold ? '<w:b/>' : ''}<w:color w:val="${o.color || '2B211B'}"/><w:sz w:val="${o.sz || 20}"/>${o.upper ? '<w:caps/>' : ''}</w:rPr><w:t xml:space="preserve">${xesc(txt)}</w:t></w:r></w:p>`;
+const wGrid = w => `<w:tblGrid>${w.map(x => `<w:gridCol w:w="${x}"/>`).join('')}</w:tblGrid>`;
+const wBorders = inner => `<w:tblBorders>${inner}<w:top w:val="none" w:sz="0" w:color="auto"/><w:left w:val="none" w:sz="0" w:color="auto"/><w:right w:val="none" w:sz="0" w:color="auto"/><w:insideV w:val="none" w:sz="0" w:color="auto"/></w:tblBorders>`;
+function psDocx(id, s) { // same sections, labels and figures as the on-screen payslip
+  const { e, c, g, days } = psData(id, s), END = weekEnd(s);
+  const CW = [2900, 850, 1450, 1450, 1550], MW = [2400, 1500], HDR = { fill: 'F5EEE6', color: '806F62', sz: 15, upper: true };
+  const rows = days.map(l => `<w:tr>${wCell(CW[0], l.date)}${wCell(CW[1], l.day)}${wCell(CW[2], l.tin != null ? fmtMin(l.tin) : l.lbl, { color: l.tin != null ? '2B211B' : '806F62' })}${wCell(CW[3], l.tout != null ? fmtMin(l.tout) : '—')}${wCell(CW[4], l.tin != null ? fmtHM(l.hrs) : '—', { align: 'right' })}</w:tr>`).join('');
+  const att = `<w:tbl><w:tblPr><w:tblW w:w="8200" w:type="dxa"/>${wBorders('<w:insideH w:val="single" w:sz="4" w:color="F7EFE5"/><w:bottom w:val="single" w:sz="4" w:color="F2EAE0"/>')}</w:tblPr>${wGrid(CW)}`
+    + `<w:tr>${wCell(CW[0], 'DATE', HDR)}${wCell(CW[1], 'DAY', HDR)}${wCell(CW[2], 'TIME IN', HDR)}${wCell(CW[3], 'TIME OUT', HDR)}${wCell(CW[4], 'TOTAL HOURS', { ...HDR, align: 'right' })}</w:tr>${rows}`
+    + `<w:tr>${wCell(CW[0] + CW[1] + CW[2] + CW[3], 'Total Hours Worked', { fill: 'F5EEE6', bold: true, align: 'right', span: 4 })}${wCell(CW[4], fmtHM(c.mins), { fill: 'F5EEE6', bold: true, align: 'right' })}</w:tr></w:tbl>`;
+  const money = (label, val) => `<w:tbl><w:tblPr><w:tblW w:w="3900" w:type="dxa"/>${wBorders('<w:bottom w:val="single" w:sz="4" w:color="F2EAE0"/>')}</w:tblPr>${wGrid(MW)}`
+    + `<w:tr>${wCell(MW[0], 'DESCRIPTION', HDR)}${wCell(MW[1], 'AMOUNT (₱)', { ...HDR, align: 'right' })}</w:tr>`
+    + `<w:tr>${wCell(MW[0], label, { fill: 'F5EEE6', bold: true })}${wCell(MW[1], val, { fill: 'F5EEE6', bold: true, align: 'right' })}</w:tr></w:tbl>`;
+  const dedRows = Object.entries(g).map(([t, v]) => `<w:tr>${wCell(MW[0], dedName(t))}${wCell(MW[1], num(v), { align: 'right' })}</w:tr>`).join('') || `<w:tr>${wCell(MW[0], 'No deductions')}${wCell(MW[1], '0.00', { align: 'right' })}</w:tr>`;
+  const ded = `<w:tbl><w:tblPr><w:tblW w:w="3900" w:type="dxa"/>${wBorders('<w:insideH w:val="single" w:sz="4" w:color="F7EFE5"/><w:bottom w:val="single" w:sz="4" w:color="F2EAE0"/>')}</w:tblPr>${wGrid(MW)}`
+    + `<w:tr>${wCell(MW[0], 'DESCRIPTION', HDR)}${wCell(MW[1], 'AMOUNT (₱)', { ...HDR, align: 'right' })}</w:tr>${dedRows}`
+    + `<w:tr>${wCell(MW[0], 'TOTAL DEDUCTIONS', { fill: 'F5EEE6', bold: true })}${wCell(MW[1], peso(c.ded), { fill: 'F5EEE6', bold: true, align: 'right' })}</w:tr></w:tbl>`;
+  const info = [['Staff Name', e.name], ['Staff ID', id], ['Position', e.pos], ['Pay Period', `${longD(s)} – ${longD(END)}`], ['Pay Date', longD(END)]];
+  const body = wP('STAFF PAYSLIP', { bold: true, sz: 26, after: 60 })
+    + wP(bizName(), { bold: true, sz: 22, align: 'right' }) + wP(bizAddr(), { color: '806F62', align: 'right', sz: 18 })
+    + (CFG.contact ? wP(CFG.contact, { color: '806F62', align: 'right', sz: 18 }) : '')
+    + info.map(([k, v]) => `<w:p><w:pPr><w:spacing w:after="20"/><w:tabs><w:tab w:val="left" w:pos="1600"/></w:tabs></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${xesc(k)}</w:t></w:r><w:r><w:sz w:val="20"/><w:tab/><w:t xml:space="preserve">: ${xesc(v)}</w:t></w:r></w:p>`).join('')
+    + wP('1. Attendance summary', { bold: true, sz: 19, upper: true, after: 80 }) + att
+    + wP('2. Earnings / gross pay', { bold: true, sz: 19, upper: true, after: 80 }) + money('GROSS PAY', peso(c.gross))
+    + wP('3. Deductions', { bold: true, sz: 19, upper: true, after: 80 }) + ded
+    + `<w:tbl><w:tblPr><w:tblW w:w="3900" w:type="dxa"/>${wBorders('')}</w:tblPr>${wGrid(MW)}<w:tr>${wCell(MW[0], 'NET PAY', { fill: 'FBF3E8', bold: true, sz: 24 })}${wCell(MW[1], peso(c.net), { fill: 'FBF3E8', bold: true, sz: 24, align: 'right' })}</w:tr></w:tbl>`
+    + wP(CFG.psNote, { color: '806F62', sz: 18, after: 320 }) + wP('_'.repeat(30), { color: '806F62', sz: 18 }) + wP(CFG.psSignatory, { align: 'right', color: '806F62', sz: 18 });
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  return zipFiles([
+    { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>` },
+    { name: '_rels/.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>` },
+    { name: 'word/document.xml', data: doc },
+  ]);
 }
 $('#ps-per').addEventListener('input', () => { psSel = null; psPage = 1; renderPayslips(); });
 $('#ps-q').addEventListener('input', () => { psPage = 1; renderPayslips(); });
@@ -1356,8 +1490,172 @@ $('#ps-rows').addEventListener('click', e => {
   if (b.dataset.psv) { psSel = { id: b.dataset.psv, k }; renderPayslips(); if (innerWidth < 1280) $('#ps-panel').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 });
 $('#ps-close').addEventListener('click', () => { psSel = null; renderPayslips(); });
-$('#ps-dl').addEventListener('click', () => { if (psSel) downloadSlip(psSel.id, new Date(psSel.k + 'T00:00')); });
-$('#ps-all-dl').addEventListener('click', downloadAllPayslips);
+/* ---------- Payslip PDF: written straight to a .pdf file (no print dialog, no library) ----------
+   A PDF is a plain-text container, so we emit the card as vector shapes plus base-14 Helvetica text.
+   The file opens anywhere and needs no fonts embedded. One payslip per page. */
+const PDF_W = 595.28, PDF_H = 841.89; // A4 in points
+const PH = '278,278,355,556,278,333,556,584,191,333,333,389,584,278,333,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584'.split(',').map(Number);
+const PHB = '278,333,474,556,278,333,556,584,278,333,333,389,584,278,333,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584'.split(',').map(Number);
+const pdfW = (s, size, bold) => { let t = 0; for (const ch of String(s)) { const c = ch.charCodeAt(0); t += (bold ? PHB : PH)[c >= 32 && c <= 126 ? c - 32 : 0] || 556; } return t * size / 1000; };
+const WINX = { '\u2013': '\\226', '\u2014': '\\227', '\u00b7': '\\267', '\u2019': '\\222', '\u2018': '\\221', '\u201c': '\\223', '\u201d': '\\224' };
+const pdfEsc = s => Array.from(String(s)).map(ch => { // WinAnsi bytes, with ( ) \ escaped
+  const c = ch.charCodeAt(0);
+  if (c >= 32 && c <= 126) return (ch === '(' || ch === ')' || ch === '\\') ? '\\' + ch : ch;
+  return WINX[ch] || '?';
+}).join('');
+const f2 = n => (Math.round(n * 100) / 100).toString();
+function pdfRoundRect(x, y, w, h, r) { // rounded card / band background
+  const k = 0.5523 * r;
+  return [`${f2(x + r)} ${f2(y)} m`, `${f2(x + w - r)} ${f2(y)} l`,
+  `${f2(x + w - r + k)} ${f2(y)} ${f2(x + w)} ${f2(y + r - k)} ${f2(x + w)} ${f2(y + r)} c`,
+  `${f2(x + w)} ${f2(y + h - r)} l`,
+  `${f2(x + w)} ${f2(y + h - r + k)} ${f2(x + w - r + k)} ${f2(y + h)} ${f2(x + w - r)} ${f2(y + h)} c`,
+  `${f2(x + r)} ${f2(y + h)} l`,
+  `${f2(x + r - k)} ${f2(y + h)} ${f2(x)} ${f2(y + h - r + k)} ${f2(x)} ${f2(y + h - r)} c`,
+  `${f2(x)} ${f2(y + r)} l`,
+  `${f2(x)} ${f2(y + r - k)} ${f2(x + r - k)} ${f2(y)} ${f2(x + r)} ${f2(y)} c`, 'h'].join('\n');
+}
+function pdfBuild(streams, title) { // streams: one content stream per page -> the raw PDF source
+  const n = streams.length, objs = [], last = 5 + 2 * n;
+  objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objs[2] = `<< /Type /Pages /Kids [${Array.from({ length: n }, (_, i) => `${5 + 2 * i} 0 R`).join(' ')}] /Count ${n} >>`;
+  objs[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  streams.forEach((c, i) => {
+    objs[5 + 2 * i] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f2(PDF_W)} ${f2(PDF_H)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + 2 * i} 0 R >>`;
+    objs[6 + 2 * i] = `<< /Length ${c.length} >>\nstream\n${c}\nendstream`;
+  });
+  objs[last] = `<< /Title (${pdfEsc(title)}) /Producer (InfusoPay) >>`;
+  let out = '%PDF-1.4\n', offs = [];
+  for (let i = 1; i <= last; i++) { offs[i] = out.length; out += `${i} 0 obj\n${objs[i]}\nendobj\n`; }
+  const xr = out.length;
+  out += `xref\n0 ${last + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= last; i++) out += `${String(offs[i]).padStart(10, '0')} 00000 n \n`;
+  out += `trailer\n<< /Size ${last + 1} /Root 1 0 R /Info ${last} 0 R >>\nstartxref\n${xr}\n%%EOF`;
+  return out;
+}
+const pdfAssemble = (streams, title) => new Blob([pdfBuild(streams, title)], { type: 'application/pdf' });
+function psPdfPage(id, s) { // draws the payslip card on one A4 page, mirroring the .ps layout on screen
+  const { e, c, g, days } = psData(id, s), END = weekEnd(s);
+  const peso = n => 'PHP ' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }); // WinAnsi has no ₱ glyph, so the PDF spells it out
+  const CW = 520, PX = (PDF_W - CW) / 2, PAD = 16, IW = CW - PAD * 2, R = 10, TOP0 = PDF_H - 54; // card width, page margin, padding, card top edge
+  const INK = '0.169 0.129 0.106', MUT = '0.502 0.435 0.384', HEAD = '0.961 0.933 0.902', NET = '0.984 0.953 0.910', LINE = '0.969 0.937 0.898', BOR = '0.918 0.874 0.808';
+  const o = [], put = s => o.push(s);
+  const fill = (col, x, y, w, h) => put(`${col} rg ${f2(x)} ${f2(y)} ${f2(w)} ${f2(h)} re f`);
+  const rule = (x1, y1, x2, col) => put(`${col} RG 0.5 w ${f2(x1)} ${f2(y1)} m ${f2(x2)} ${f2(y1)} l S`);
+  const txt = (str, x, y, size, bold, col, align) => {
+    let tx = x; if (align === 'r') tx = x - pdfW(str, size, bold); else if (align === 'c') tx = x - pdfW(str, size, bold) / 2;
+    put(`BT ${col} rg /${bold ? 'F2' : 'F1'} ${size} Tf 1 0 0 1 ${f2(tx)} ${f2(y)} Tm (${pdfEsc(str)}) Tj ET`);
+  };
+  // one top-down cursor drives everything; the card border is measured from where the cursor ends,
+  // so the frame can never drift out of step with the content the way fixed arithmetic did
+  const H_ROW = 15, H_SEC = 24, H_HEAD = 52, L = PX + PAD, RIGHT = PX + PAD + IW;
+  let y = TOP0 - PAD; // TOP0 = card top edge
+  const rowBase = (top, size) => top - H_ROW / 2 - size * 0.35; // vertically centred in a row
+  const sectionTitle = (label, x) => { txt(label, x, y - 14, 9, true, INK); y -= H_SEC; };
+  // header: title left, business right
+  txt('STAFF PAYSLIP', L, y - 16, 15, true, INK);
+  txt(bizName(), RIGHT, y - 15, 12, true, INK, 'r');
+  txt(bizAddr(), RIGHT, y - 29, 8.5, false, MUT, 'r');
+  if (CFG.contact) txt(CFG.contact, RIGHT, y - 41, 8.5, false, MUT, 'r');
+  y -= H_HEAD;
+  [['Staff Name', e.name], ['Staff ID', id], ['Position', e.pos], ['Pay Period', `${longD(s)} \u2013 ${longD(END)}`], ['Pay Date', longD(END)]].forEach(([k, v]) => {
+    txt(k, L, y - 11, 9.5, false, MUT); txt(': ' + v, L + 96, y - 11, 9.5, false, INK); y -= 15;
+  });
+  // 1. attendance summary
+  sectionTitle('1. ATTENDANCE SUMMARY', L);
+  const aw = [150, 58, 92, 92], awX = [0, 150, 208, 300, 392], awEnd = i => L + awX[i] + (aw[i] != null ? aw[i] : IW - awX[i]) - 6;
+  const aCell = (i, str, o2 = {}) => txt(str, o2.right ? awEnd(i) : L + awX[i] + 6, rowBase(y, o2.size || 9), o2.size || 9, !!o2.bold, o2.col || INK, o2.right ? 'r' : undefined);
+  fill(HEAD, L, y - H_ROW, IW, H_ROW);
+  aCell(0, 'DATE', { size: 7.5, col: MUT }); aCell(1, 'DAY', { size: 7.5, col: MUT }); aCell(2, 'TIME IN', { size: 7.5, col: MUT });
+  aCell(3, 'TIME OUT', { size: 7.5, col: MUT }); aCell(4, 'TOTAL HOURS', { size: 7.5, col: MUT, right: true });
+  rule(L, y - H_ROW, RIGHT, LINE); y -= H_ROW;
+  days.forEach(l => {
+    aCell(0, l.date); aCell(1, l.day);
+    aCell(2, l.tin != null ? fmtMin(l.tin) : l.lbl, { col: l.tin != null ? INK : MUT });
+    aCell(3, l.tout != null ? fmtMin(l.tout) : '\u2014');
+    aCell(4, l.tin != null ? fmtHM(l.hrs) : '\u2014', { right: true });
+    rule(L, y - H_ROW, RIGHT, LINE); y -= H_ROW;
+  });
+  fill(HEAD, L, y - H_ROW, IW, H_ROW);
+  // label ends before the hours column starts, so the two can never overprint
+  txt('Total Hours Worked', awEnd(3), rowBase(y, 9), 9, true, INK, 'r');
+  txt(fmtHM(c.mins), RIGHT - 6, rowBase(y, 9), 9, true, INK, 'r');
+  rule(L, y - H_ROW, RIGHT, LINE); y -= H_ROW;
+  // 2 + 3 side by side, exactly like the card on screen. Each column owns its own cursor.
+  const CW2 = (IW - 14) / 2, LX = L, RX = L + CW2 + 14;
+  sectionTitle('2. EARNINGS / GROSS PAY', LX);
+  txt('3. DEDUCTIONS', RX, y + H_SEC - 14, 9, true, INK); // right title sits on the same line
+  // Each row occupies [cy - H_ROW, cy] and colRow returns the next cursor, so a row can never be
+  // drawn without advancing past it — that mismatch is what clipped TOTAL DEDUCTIONS before.
+  const colRow = (bx, cy, label, val, bg, bold) => {
+    if (bg) fill(bg, bx, cy - H_ROW, CW2, H_ROW);
+    txt(label, bx + 6, cy - H_ROW / 2 - 3.15, 9, !!bold, INK);
+    txt(val, bx + CW2 - 6, cy - H_ROW / 2 - 3.15, 9, true, INK, 'r');
+    rule(bx, cy - H_ROW, bx + CW2, LINE);
+    return cy - H_ROW;
+  };
+  const y0 = y;
+  let ly = colRow(LX, y0, 'DESCRIPTION', 'AMOUNT (PHP)', HEAD, false);
+  let ry = colRow(RX, y0, 'DESCRIPTION', 'AMOUNT (PHP)', HEAD, false);
+  ly = colRow(LX, ly, 'GROSS PAY', peso(c.gross), HEAD, true);
+  Object.entries(g).forEach(([t, v]) => { ry = colRow(RX, ry, dedName(t), num(v), null, false); });
+  if (!Object.keys(g).length) ry = colRow(RX, ry, 'No deductions', '0.00', null, false);
+  ry = colRow(RX, ry, 'TOTAL DEDUCTIONS', peso(c.ded), HEAD, true);
+  y = Math.min(ly, ry); // clear whichever column ran longer
+  // net pay band: [y - 28, y] after a 16pt gap, so it can never touch the rows above
+  y -= 16;
+  put(`${NET} rg ${pdfRoundRect(L, y - 28, IW, 28, 7)} f`);
+  txt('NET PAY', L + 12, y - 28 / 2 - 3.85, 11, true, INK);
+  txt(peso(c.net), RIGHT - 12, y - 28 / 2 - 3.85, 11, true, INK, 'r');
+  y -= 28;
+  // footer: note left, signature rule above the signatory on the right
+  y -= 26;
+  txt(CFG.psNote, L, y, 8.5, false, MUT);
+  put(`${MUT} RG 0.6 w ${f2(RIGHT - 150)} ${f2(y + 13)} m ${f2(RIGHT)} ${f2(y + 13)} l S`);
+  txt(CFG.psSignatory, RIGHT - 75, y, 8.5, false, MUT, 'c');
+  y -= PAD; // bottom padding, so the note and signature clear the border like the top and sides do
+  // frame sized from the real content height (y is below the footer baseline, plus the bottom padding)
+  const CARDH = TOP0 - y;
+  o.unshift(`${BOR} RG 0.7 w ${pdfRoundRect(PX, TOP0 - CARDH, CW, CARDH, R)} S`);
+  return o.join('\n');
+}
+function psPdf(list) { return pdfAssemble(list.map(r => psPdfPage(r.id, r.s)), `Payslip${list.length > 1 ? 's' : ''} – ${bizName()}`); }
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function releasedSlips() {
+  const k = $('#ps-per').value, s = new Date(k + 'T00:00');
+  return { s, rows: payRows(s, k !== dkey(curStart())).filter(r => r.st === 'released') };
+}
+function downloadSlip(id, s, fmt) { // both formats download a real file; nothing opens a print dialog
+  const f = fmt === 'docx' ? psDocx : psPdf, ext = fmt === 'docx' ? 'docx' : 'pdf';
+  saveBlob(f([{ id, s }]), `payslip-${id}-${dkey(s)}.${ext}`);
+}
+function downloadAllPayslips(fmt) {
+  const { s, rows } = releasedSlips();
+  if (!rows.length) { toast('No released payslips are available for this pay period.', 'err'); return; }
+  const list = rows.map(r => ({ id: r.id, s }));
+  if (fmt === 'docx') { rows.forEach((r, i) => setTimeout(() => saveBlob(psDocx(r.id, s), `payslip-${r.id}-${dkey(s)}.docx`), i * 120)); } // browsers throttle bursts, so stagger the saves
+  else saveBlob(psPdf(list), `payslips_${dkey(s)}_to_${dkey(weekEnd(s))}.pdf`); // one file, one slip per page
+  toast(`Downloading ${rows.length} payslip${rows.length === 1 ? '' : 's'} as ${fmt === 'docx' ? 'Word documents' : 'one PDF'}.`);
+}
+const closePsMenus = () => { $('#ps-menu').classList.add('hidden'); $('#ps-all-menu').classList.add('hidden'); $('#ps-dl').setAttribute('aria-expanded', 'false'); $('#ps-all-dl').setAttribute('aria-expanded', 'false'); };
+$('#ps-dl').addEventListener('click', e => {
+  e.stopPropagation(); if (!psSel) return;
+  const m = $('#ps-menu'), open = m.classList.contains('hidden'); closePsMenus();
+  m.classList.toggle('hidden', !open); $('#ps-dl').setAttribute('aria-expanded', String(open));
+});
+$('#ps-all-dl').addEventListener('click', e => {
+  e.stopPropagation();
+  const m = $('#ps-all-menu'), open = m.classList.contains('hidden'); closePsMenus();
+  m.classList.toggle('hidden', !open); $('#ps-all-dl').setAttribute('aria-expanded', String(open));
+});
+$('#ps-menu').addEventListener('click', e => { const b = e.target.closest('[data-fmt]'); if (b && psSel) { downloadSlip(psSel.id, new Date(psSel.k + 'T00:00'), b.dataset.fmt); closePsMenus(); } });
+$('#ps-all-menu').addEventListener('click', e => { const b = e.target.closest('[data-all]'); if (b) { downloadAllPayslips(b.dataset.all); closePsMenus(); } });
+document.addEventListener('click', e => { if (!e.target.closest('#ps-menu, #ps-dl, #ps-all-menu, #ps-all-dl')) closePsMenus(); });
+addEventListener('keydown', e => { if (e.key === 'Escape') closePsMenus(); });
 
 /* ---------- Sidebar (hamburger) ---------- */
 const side = $('#sidebar'), overlay = $('#overlay'), isDesk = () => matchMedia('(min-width:1024px)').matches;
