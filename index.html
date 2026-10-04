@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/tailwind.css">
-<link rel="stylesheet" href="css/styles.css?v=6">
+<link rel="stylesheet" href="css/styles.css?v=8">
 </head>
 <body>
 
@@ -162,12 +162,6 @@
         <div><div class="font-medium" id="en"></div><div class="muted text-sm" id="ei"></div></div></div>
         <dl class="mt-5 space-y-3 text-sm"><div class="flex justify-between"><dt class="muted">Position</dt><dd id="ep"></dd></div><div class="flex justify-between"><dt class="muted">Schedule</dt><dd id="es"></dd></div></dl>
       </div>
-      <div id="late-wrap" class="card p-5 mt-4 hidden" style="border-color:var(--warn)">
-        <p id="late-msg" class="text-sm font-medium"></p>
-        <label class="lbl mt-3" for="late-note">Reason for being late <span class="muted font-normal">(optional)</span></label>
-        <textarea id="late-note" class="input" rows="2" maxlength="140" placeholder="e.g. Heavy traffic on the way"></textarea>
-        <p class="muted text-xs mt-1">Your manager will see this in Notifications — they can accept it (your late deduction is removed) or reject it (the deduction stays).</p>
-      </div>
     </div>
     <div class="flex justify-between gap-3 mt-6"><a href="#/scan" class="ghost">Scan again</a><button id="vbtn" class="btn px-6">Verify identity</button></div>
   </main>
@@ -216,7 +210,7 @@
       <div class="grid lg:grid-cols-2 gap-4 mt-4">
         <div class="card p-5 min-w-0"><h2 class="font-medium">Attendance overview</h2><p class="muted text-xs mt-1">Last 7 days</p><div id="chart" class="mt-3"></div><div class="flex flex-wrap gap-4 text-xs muted mt-2"><span><i style="color:var(--chart-ontime)">●</i> On time</span><span><i style="color:var(--chart-late)">●</i> Late</span><span><i style="color:var(--chart-absent)">●</i> Absent</span></div></div>
         <div class="card p-5 min-w-0"><h2 class="font-medium">Today’s attendance</h2>
-          <div class="overflow-auto max-h-72 mt-3"><table class="w-full text-sm"><thead class="muted text-left"><tr><th class="py-2 font-normal">ID</th><th class="font-normal">Name</th><th class="font-normal">Time in</th><th class="font-normal">Status</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+          <div class="overflow-auto max-h-72 mt-3"><table class="w-full text-sm"><thead class="muted text-left"><tr><th class="py-2 font-normal">ID</th><th class="font-normal">Name</th><th class="font-normal">Time in</th><th class="font-normal">Time out</th><th class="font-normal">Status</th></tr></thead><tbody id="rows"></tbody></table></div></div>
       </div>
       <div class="grid md:grid-cols-3 gap-4 mt-4">
         <div class="card p-5"><h2 class="font-medium">Payroll status</h2><p class="text-2xl font-semibold mt-2">2</p><p class="muted text-sm">payrolls waiting for approval</p></div>
@@ -286,13 +280,13 @@
           <input id="a-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search attendance">
         </div>
         <p id="a-label" class="muted text-sm mt-4"></p>
-        <div class="overflow-auto mt-2">
+        <div class="overflow-auto max-h-[32rem] mt-2">
           <table class="w-full text-sm min-w-[900px]">
             <thead class="muted text-left text-xs uppercase tracking-wide"><tr id="a-head"></tr></thead>
             <tbody id="a-rows"></tbody>
           </table>
         </div>
-        <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="a-count" class="muted text-sm"></p><div id="a-pager" class="flex gap-2"></div></div>
+        <p id="a-count" class="muted text-sm mt-3"></p>
       </div>
     </main>
     <!-- DEDUCTIONS PAGE -->
@@ -405,7 +399,7 @@
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="p-count" class="muted text-sm"></p><div id="p-pager" class="flex gap-2"></div></div>
           <div id="p-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4"></div>
-          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted (a late reason accepted in Notifications removes that Tardiness deduction). Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the staff is a separate step. Staff stay in the current period until the whole period closes and moves to History.</p>
+          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the staff is a separate step. Staff stay in the current period until the whole period closes and moves to History.</p>
         </div>
         <div id="p-his" class="hidden">
           <p class="muted text-sm mt-4">Closed pay periods, archived as a whole. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
@@ -495,10 +489,9 @@
 
         <div class="card p-5">
           <h2 class="font-medium">Notifications</h2>
-          <p class="muted text-xs mt-1">Control the late-arrival alerts on the dashboard bell.</p>
-          <label class="flex items-center gap-2 text-sm mt-4"><input id="set-notify" type="checkbox"> Show late-arrival notifications</label>
-          <div class="mt-4 max-w-[16rem]"><label class="lbl" for="set-notifymin">Only notify when late by at least (minutes)</label><input id="set-notifymin" type="number" min="0" max="180" class="input"></div>
-          <p class="muted text-xs mt-3">Late means beyond the grace period set in Attendance rules.</p>
+          <p class="muted text-xs mt-1">Control the alerts on the dashboard bell.</p>
+          <label class="flex items-center gap-2 text-sm mt-4"><input id="set-notify" type="checkbox"> Show clock-in and clock-out notifications</label>
+          <p class="muted text-xs mt-3">Every time a staff member scans in or out, the bell and the dashboard show it.</p>
         </div>
       </div>
 
@@ -717,6 +710,6 @@
 
 <div id="toasts" class="fixed left-0 right-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none" style="top:calc(1rem + env(safe-area-inset-top,0px))"></div>
 
-<script src="js/app.js?v=5"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>

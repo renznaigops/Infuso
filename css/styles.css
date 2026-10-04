@@ -130,6 +130,9 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
 /* Notification dropdown (dashboard header bell) */
 #bell-panel { position: absolute; right: 0; top: calc(100% + .5rem); width: min(18rem, 80vw); min-height: 22rem; display: grid; place-items: center; padding: 1rem; border-radius: var(--r-md); box-shadow: 0 24px 60px -16px rgba(35,22,12,.25); z-index: 50; text-align: center; }
 #bell-panel.hidden { display: none; }
+/* The list scrolls inside the panel: the vendored Tailwind build has no .max-h-80, so the cap lives here.
+   Capping the child (not the panel) keeps the panel's centering from stranding the top of a long list. */
+#bell-panel > div { max-height: min(24rem, calc(100vh - 9rem)); max-height: min(24rem, calc(100dvh - 9rem)); overflow-y: auto; overscroll-behavior: contain; }
 
 /* Header bell: inline SVG (closed paths so they fill as a solid silhouette).
    Outline at rest (fill-opacity 0), filled once the panel is open (aria-expanded). */
@@ -195,6 +198,10 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
   body.print-report #page-reports th { padding-top: .25rem; padding-bottom: .25rem; }
   body.print-report #page-reports tbody td { padding-top: .35rem; padding-bottom: .35rem; }
 }
+
+/* Attendance: one scrollable table holds every staff row — keep the column header visible while it scrolls */
+#page-attendance thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+@media print { #page-attendance thead th { position: static; } }
 
 /* Payslips */
 .ps-wrap { display: grid; gap: 1rem; margin-top: 1.25rem; }

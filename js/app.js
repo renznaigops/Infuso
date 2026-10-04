@@ -45,7 +45,7 @@ const CFG_DEF = {
   address: 'Bulacan, Philippines', contact: '', email: '', // business profile (name lives on the account)
   grace: 15, blockUnsched: true,                                    // attendance rules
   fallbackRate: 80, psNote: 'Thank you for your hard work!', psSignatory: 'Authorized Signature', // payroll defaults
-  notifyLate: true, notifyMin: 0,                                  // dashboard bell
+  notifyLate: true,                                                // dashboard bell (clock-ins / clock-outs)
   requirePin: true,                                                // ask for the 6-digit PIN before the admin area
   reducedMotion: false, density: 'comfortable',                    // appearance
 };
@@ -362,74 +362,49 @@ function startVerify() { // QR scan -> confirm (no face step)
   $('#ep').textContent = e.pos; $('#es').textContent = schedText(pending);
   $('#vt').textContent = 'Confirm attendance'; $('#vs').textContent = `QR code scanned. Confirm to record your ${label}.`;
   $('#vbtn').textContent = `Confirm ${label}`;
-  const lw = $('#late-wrap');
-  if (lw) {
-    const today = new Date().toDateString();
-    const firstIn = type === 'in' && !logs().some(x => x.id === pending && x.type === 'in' && new Date(x.ts).toDateString() === today);
-    const late = firstIn && isLateNow(pending); // only the day's first time in can be late (break-in never asks)
-    $('#late-note').value = '';
-    if (late) $('#late-msg').textContent = `You are ${late} min late (scheduled ${fmtMin(startOf(pending))}, ${GRACE}-min grace included).`;
-    lw.classList.toggle('hidden', !late);
-  }
 }
 $('#vbtn').addEventListener('click', async () => {
   const type = nextType(pending), e = EMP[pending], now = Date.now();
   const today = new Date().toDateString();
   const firstIn = type === 'in' && !logs().some(x => x.id === pending && x.type === 'in' && new Date(x.ts).toDateString() === today);
   const late = firstIn && isLateNow(pending, now);
-  const noteEl = $('#late-note');
-  const note = late && noteEl ? noteEl.value.trim().replace(/\s+/g, ' ').slice(0, 140) : ''; // keep one line, cap length
   const ok = await confirmCard({
     title: type === 'in' ? 'Confirm time in?' : 'Confirm time out?',
     msg: `${e.name} (${pending}): record ${type === 'in' ? 'time in' : 'time out'} at ${fmtTime(now)}${late ? ` — ${late} min late` : ''}?`,
     ok: type === 'in' ? 'Confirm time in' : 'Confirm time out', tone: 'ok',
   });
   if (!ok) return;
-  const l = logs(); l.push({ id: pending, name: e.name, type, ts: now, ...(note ? { note } : {}) }); store.set('logs', l);
-  toast(`${e.name}: Time ${type} at ${fmtTime(now)}` + (note ? ' — reason saved.' : ''));
+  const l = logs(); l.push({ id: pending, name: e.name, type, ts: now }); store.set('logs', l);
+  toast(`${e.name}: Time ${type} at ${fmtTime(now)}`);
   pending = null; go('scan');
 });
 
 /* ---------- Dashboard ---------- */
-/* Late-reason requests: the reason typed on Confirm Attendance lands in the bell as a request.
-   Owner accepts -> that day's automatic Tardiness deduction is waived; rejects -> it stays.
-   Keys match the auto deduction (a-{id}-{date}-t), so autoDeds() can skip accepted ones. */
-let REQ = store.get('lateReq', []); // [{ k, id, date, dec: 'ok' | 'no', ts }] — persisted in localStorage
-const saveReq = () => store.set('lateReq', REQ);
-const reqOf = k => REQ.find(r => r.k === k); // undefined = still waiting for the owner
-const isWaived = k => (reqOf(k) || {}).dec === 'ok';
-function lateNotifs() { // today's late time-ins, newest first — employee reasons ride along on the log entry
-  const today = new Date().toDateString(), t = logs().filter(x => new Date(x.ts).toDateString() === today);
-  const seen = new Set();
-  return t.filter(x => x.type === 'in' && EMP[x.id] && EMP[x.id].active && !seen.has(x.id) && seen.add(x.id))
-    .map(x => {
-      const d = new Date(x.ts), m = d.getHours() * 60 + d.getMinutes(), s = startOf(x.id);
-      const mins = m - s;
-      if (!(m > s + GRACE && mins >= (CFG.notifyMin || 0))) return null;
-      const k = `a-${x.id}-${dkey(d)}-t`, r = reqOf(k); // same key the automatic Tardiness deduction uses
-      return { ...x, mins, sin: s, k, dec: r ? r.dec : null };
-    }).filter(Boolean).sort((a, b) => b.ts - a.ts);
+let bellRead = store.get('bellRead', 0); // timestamp of the last bell click — clock events after it count as unread
+function scanEvents() { // today's clock events, newest first. Up to 4 scans a day (in, break out, break in, out),
+  const byId = new Map(); // so the 1st scan is the time in and the 4th is the time out
+  logs().filter(x => new Date(x.ts).toDateString() === new Date().toDateString() && EMP[x.id] && EMP[x.id].active)
+    .forEach(x => { const l = byId.get(x.id) || []; l.push(x); byId.set(x.id, l); });
+  const out = [];
+  byId.forEach(l => {
+    if (l[0]) out.push({ ...l[0], kind: 'in' });
+    if (l[3]) out.push({ ...l[3], kind: 'out' });
+  });
+  return out.sort((a, b) => b.ts - a.ts);
 }
 function renderBell() {
   const panel = $('#bell-panel'); if (!panel) return;
   const dot = $('#bell-dot');
-  if (!CFG.notifyLate) { dot.classList.add('hidden'); dot.textContent = ''; panel.innerHTML = '<p class="muted text-sm">Late-arrival alerts are turned off in Settings.</p>'; return; }
-  const items = lateNotifs();
-  const pend = items.filter(x => !x.dec).length; // the badge counts requests still waiting on the owner
-  dot.textContent = pend ? (pend > 9 ? '9+' : String(pend)) : '';
-  dot.classList.toggle('hidden', !pend);
-  panel.innerHTML = items.length ? `<div class="w-full text-left space-y-2 max-h-80 overflow-auto">`
-    + `<p class="text-sm font-medium px-1">Late arrivals today (${items.length})</p>`
-    + items.map(x => `<div class="card p-3"><div class="text-sm font-medium">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div>`
-      + `<div class="muted text-xs mt-0.5">${fmtTime(x.ts)} · Scheduled ${fmtMin(x.sin)} · Late by ${x.mins} min</div>`
-      + `<div class="text-sm mt-1">${x.note ? `“${esc(x.note)}”` : '<span class="muted">No reason given.</span>'}</div>`
-      + (x.dec === 'ok' ? `<div class="mt-1.5"><span class="badge b-ok">Accepted · deduction removed</span></div>`
-        : x.dec === 'no' ? `<div class="mt-1.5"><span class="badge b-err">Rejected · deduction stays</span></div>`
-        : `<p class="muted text-xs mt-1.5">Tardiness ${peso(dedAmt(x.id, x.mins))} · Accept waives it, Reject keeps it.</p>`
-          + `<div class="flex gap-2 mt-1.5"><button class="ghost !py-1 !px-2 text-xs" style="color:var(--ok);border-color:var(--ok)" data-reqk="${x.k}" data-dec="ok" aria-label="Accept late reason">Accept</button>`
-          + `<button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-reqk="${x.k}" data-dec="no" aria-label="Reject late reason">Reject</button></div>`)
-      + `</div>`).join('')
-    + `</div>` : '<p class="muted text-sm">No notifications</p>';
+  if (!CFG.notifyLate) { dot.classList.add('hidden'); dot.textContent = ''; panel.innerHTML = '<p class="muted text-sm">Attendance notifications are turned off in Settings.</p>'; return; }
+  const items = scanEvents();
+  const unread = items.filter(x => x.ts > bellRead).length; // the badge only counts events newer than the last bell click
+  dot.textContent = unread ? (unread > 9 ? '9+' : String(unread)) : '';
+  dot.classList.toggle('hidden', !unread);
+  panel.innerHTML = items.length ? `<div class="w-full text-left space-y-2">` /* scroll cap: #bell-panel > div in styles.css */
+    + `<p class="text-sm font-medium px-1">Timed in / out today (${items.length})</p>`
+    + items.map(x => `<div class="card p-3"><div class="flex items-center gap-2"><span class="badge ${x.kind === 'in' ? 'b-ok' : 'b-night'}">${x.kind === 'in' ? 'Timed in' : 'Timed out'}</span><span class="muted text-xs">${fmtTime(x.ts)}</span></div>`
+      + `<div class="text-sm font-medium mt-1">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div></div>`).join('')
+    + `</div>` : '<p class="muted text-sm">No clock-ins or clock-outs yet today.</p>';
 }
 function renderDash() {
   $('#d-biz').textContent = sess.business; $('#d-addr').textContent = bizAddr(); $('#d-av').textContent = initials(sess.name);
@@ -449,32 +424,21 @@ function renderDash() {
   const BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], off: ['b-muted', 'Day off'] };
   $('#rows').innerHTML = Object.entries(EMP).filter(([, e]) => e.active).map(([id, e]) => {
     const f = t.find(x => x.id === id && x.type === 'in'); // first time in today
+    const outL = t.filter(x => x.id === id)[3]; // 4th scan of the day = time out (in, break out, break in, out)
     const d = f && new Date(f.ts);
     const st = !f ? (startOf(id) > 1e8 ? 'off' : 'absent') : d.getHours() * 60 + d.getMinutes() > startOf(id) + GRACE ? 'late' : 'present';
-    return `<tr class="border-t hair"><td class="py-2">${id}</td><td>${esc(e.name)}${st === 'late' && f.note ? `<div class="muted text-xs" style="max-width:12rem">“${esc(f.note)}”</div>` : ''}</td><td>${f ? fmtTime(f.ts) : '—'}</td><td><span class="badge ${BADGE[st][0]}">${BADGE[st][1]}</span></td></tr>`;
+    return `<tr class="border-t hair"><td class="py-2">${id}</td><td>${esc(e.name)}</td><td>${f ? fmtTime(f.ts) : '—'}</td><td>${outL ? fmtTime(outL.ts) : '—'}</td><td><span class="badge ${BADGE[st][0]}">${BADGE[st][1]}</span></td></tr>`;
   }).join('');
   $('#stat-late').textContent = late;
-  renderBell(); // keep the bell dot in step with today's late arrivals
+  renderBell(); // keep the bell dot in step with today's clock-ins / clock-outs
 }
 $('#bell').addEventListener('click', e => {
   e.stopPropagation();
+  bellRead = Date.now(); store.set('bellRead', bellRead); // the moment the bell is clicked, every notification counts as read
   const panel = $('#bell-panel');
-  if (panel.classList.contains('hidden')) renderBell(); // fresh late list + reasons each time it opens
+  renderBell(); // fresh clock-in/out list with the badge cleared
   panel.classList.toggle('hidden');
   $('#bell').setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
-});
-$('#bell-panel').addEventListener('click', async e => { // Accept / Reject a late reason
-  const b = e.target.closest('[data-reqk]'); if (!b) return;
-  const k = b.dataset.reqk, dec = b.dataset.dec, x = lateNotifs().find(n => n.k === k);
-  if (!x || reqOf(k)) return; // stale render or already decided
-  if (dec === 'ok') {
-    const yes = await confirmCard({ title: 'Accept late reason?', msg: `Remove the ${peso(dedAmt(x.id, x.mins))} Tardiness deduction for ${x.name} (${x.id})?`, ok: 'Accept', tone: 'ok' });
-    if (!yes) return;
-    reopenIfApproved(x.id, dkey(new Date(x.ts))); // approved figures changed, so that record goes back to For review
-  }
-  REQ.push({ k, id: x.id, date: dkey(new Date(x.ts)), dec, ts: Date.now() }); saveReq();
-  toast(dec === 'ok' ? `${x.name}: reason accepted — the late deduction was removed.` : `${x.name}: rejected — the late deduction stays.`);
-  renderBell();
 });
 document.addEventListener('click', e => {
   const panel = $('#bell-panel');
@@ -537,7 +501,7 @@ async function resetDemo() {
   Object.keys(SCH).forEach(k => delete SCH[k]); saveSch();
   Object.keys(EMP).forEach(k => delete EMP[k]); Object.assign(EMP, defaultEmps()); saveEmps();
   resetPay(); pSel.clear(); hSel = null;
-  store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); REQ.length = 0; saveReq(); route(); toast('Demo data reset.');
+  store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset.');
 }
 $('#reset').addEventListener('click', resetDemo);
 
@@ -845,7 +809,7 @@ $('#s-form').addEventListener('submit', e => {
 
 /* ---------- Attendance records ---------- */
 const PER_PAGE = 10;
-let aMode = 'today', aPage = 1;
+let aMode = 'today'; // one table holds every staff row — the box scrolls, there is no pagination
 const hsh = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const fmtHM = m => { m = Math.max(0, Math.round(m)); const h = Math.floor(m / 60), mm = m % 60; return h ? `${h}h${mm ? ' ' + String(mm).padStart(2, '0') + 'm' : ''}` : mm ? mm + 'm' : '0h'; };
 const schedShort = s => `${fmtShort(s.in).replace(' ', '')}–${fmtShort(s.out).replace(' ', '')}`;
@@ -854,12 +818,11 @@ const minOf = t => { const q = new Date(t); return q.getHours() * 60 + q.getMinu
 
 function attRecord(id, d) { // up to 4 scans a day: time in, break out, break in, time out
   const key = dkey(d), s = getSched(id, d), isToday = key === dkey(new Date()), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0, note: '' };
+  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0 };
   if (s.in == null) return { ...r, st: s.t };
   if (isToday) {
     const day = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key).slice(0, 4);
     r.t = day.map(x => minOf(x.ts));
-    r.note = (day.find(x => x.type === 'in') || {}).note || ''; // late reason typed on Confirm Attendance
   }
   else if (hsh(id + key) % 100 >= 7) { // demo history: deterministic, so the same day always shows the same record
     const tin = s.in + (hsh(key + id) % 35) - 12, tout = s.out + (hsh(id + 'o' + key) % 30) - 12;
@@ -897,28 +860,21 @@ function renderAttendance() {
     if (d < new Date(e.hired + 'T00:00') || (pf && e.pos !== pf) || (q && !`${id} ${e.name}`.toLowerCase().includes(q))) return;
     const r = attRecord(id, d); if (!sf || r.st === sf) recs.push(r);
   }));
-  const pages = Math.max(1, Math.ceil(recs.length / PER_PAGE)); aPage = Math.min(aPage, pages);
-  const from = (aPage - 1) * PER_PAGE, part = recs.slice(from, from + PER_PAGE);
   $('#a-head').innerHTML = A_COLS.map(([h, t]) => `<th class="py-2 font-normal pr-3"${t ? ` title="${t}"` : ''}>${h}</th>`).join('');
-  $('#a-rows').innerHTML = part.length ? part.map(r => {
+  $('#a-rows').innerHTML = recs.length ? recs.map(r => {
     const w = r.s.in != null, b = ATT_BADGE[r.st], live = r.running || r.onBreak;
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${r.id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${r.e.photo ? `<img class="avatar" src="${r.e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(r.e.name)}</span>`}<div class="leading-tight"><div>${esc(r.e.name)}</div><div class="muted text-xs">${esc(r.e.pos)}</div></div></div></td>
     <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}${schedChanged(r.id, r.d) ? '<div class="text-xs" style="color:var(--warn)" title="This day’s schedule was edited. Status and hours follow the updated schedule.">Schedule updated</div>' : ''}</td>
     ${[0, 1, 2, 3].map(i => `<td class="pr-3 whitespace-nowrap">${r.t[i] != null ? fmtMin(r.t[i]) : '—'}</td>`).join('')}
     <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${r.t.length ? fmtHM(r.hrs) : '—'}</td>
-    <td><span class="badge ${b[0]}">${b[1]}</span>${r.st === 'late' && r.note ? `<div class="text-xs mt-1" style="max-width:12rem">“${esc(r.note)}”</div>` : ''}</td></tr>`;
+    <td><span class="badge ${b[0]}">${b[1]}</span></td></tr>`;
   }).join('') : `<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
-  $('#a-count').textContent = recs.length ? `Showing ${from + 1} to ${from + part.length} of ${recs.length} records` : 'Showing 0 records';
-  const nums = []; for (let p = Math.max(1, aPage - 2); p <= Math.min(pages, Math.max(aPage + 2, 5)); p++) nums.push(p);
-  $('#a-pager').innerHTML = `<button class="ghost !px-3" data-p="${aPage - 1}" ${aPage === 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>`
-    + nums.map(p => `<button class="${p === aPage ? 'btn' : 'ghost'} !px-3" data-p="${p}">${p}</button>`).join('')
-    + `<button class="ghost !px-3" data-p="${aPage + 1}" ${aPage === pages ? 'disabled' : ''} aria-label="Next page">›</button>`;
+  $('#a-count').textContent = recs.length ? `Showing all ${recs.length} record${recs.length === 1 ? '' : 's'}` : 'Showing 0 records';
 }
-$('#a-modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { aMode = b.dataset.mode; aPage = 1; renderAttendance(); } });
-$('#a-date').addEventListener('change', e => { aMode = e.target.value ? 'date' : 'today'; aPage = 1; renderAttendance(); });
-['#a-q', '#a-pos', '#a-st'].forEach(s => $(s).addEventListener('input', () => { aPage = 1; renderAttendance(); }));
-$('#a-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { aPage = +b.dataset.p; renderAttendance(); } });
+$('#a-modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { aMode = b.dataset.mode; renderAttendance(); } });
+$('#a-date').addEventListener('change', e => { aMode = e.target.value ? 'date' : 'today'; renderAttendance(); });
+['#a-q', '#a-pos', '#a-st'].forEach(s => $(s).addEventListener('input', () => renderAttendance()));
 
 $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); toast('Coming soon in this prototype.'); }));
 
@@ -947,8 +903,7 @@ function autoDeds(from, to) {
   for (let d = new Date(to); d >= from; d = addDays(d, -1)) Object.entries(EMP).forEach(([id, e]) => {
     if (!e.active || e.draft || d < new Date(e.hired + 'T00:00')) return;
     const r = attRecord(id, d), date = dkey(d);
-    const k = `a-${id}-${date}-t`;
-    if (r.st === 'late' && !isWaived(k)) { const m = r.tin - r.s.in; out.push({ k, auto: true, date, id, type: 'tardiness', amount: dedAmt(id, m), remarks: `Late by ${m} minute${m === 1 ? '' : 's'}` }); } // accepted late reasons are waived in Notifications
+    if (r.st === 'late') { const m = r.tin - r.s.in; out.push({ k: `a-${id}-${date}-t`, auto: true, date, id, type: 'tardiness', amount: dedAmt(id, m), remarks: `Late by ${m} minute${m === 1 ? '' : 's'}` }); }
   });
   return out;
 }
@@ -1030,7 +985,7 @@ function renderDeductions() {
     : '<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No deductions match your filters.</td></tr>';
   $('#d-count').textContent = all.length ? `Showing ${at + 1} to ${at + part.length} of ${all.length} records` : 'Showing 0 records';
   $('#d-pager').innerHTML = dpager(dPage, pages);
-  $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) is generated from Attendance and Schedules: hourly rate ÷ 60 × minutes late (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours. There is no overtime or undertime. A late reason accepted in Notifications is waived and never deducted.`;
+  $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) is generated from Attendance and Schedules: hourly rate ÷ 60 × minutes late (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours. There is no overtime or undertime.`;
 }
 function refreshDedTypes(pick) { // keeps the filter and the Add deduction drop-down in step with the saved types
   const opt = (k, v) => `<option value="${esc(k)}">${esc(v)}</option>`, cf = $('#d-type').value;
@@ -1651,7 +1606,7 @@ function renderSettings() {
   $('#set-grace').value = GRACE; $('#set-block').checked = CFG.blockUnsched;
   $('#set-rate').value = DEF_RATE; $('#set-note').value = CFG.psNote; $('#set-sign').value = CFG.psSignatory;
   $('#set-require').checked = CFG.requirePin;
-  $('#set-notify').checked = CFG.notifyLate; $('#set-notifymin').value = CFG.notifyMin;
+  $('#set-notify').checked = CFG.notifyLate;
   $('#set-motion').checked = CFG.reducedMotion; $('#set-density').value = CFG.density;
   $('#set-theme').value = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
   $('#set-pw-old').value = $('#set-pw-new').value = $('#set-pw-cf').value = '';
@@ -1680,7 +1635,6 @@ setBump('#set-note', 'input', e => { CFG.psNote = e.target.value || CFG_DEF.psNo
 setBump('#set-sign', 'input', e => { CFG.psSignatory = e.target.value || CFG_DEF.psSignatory; saveCfg(); });
 setBump('#set-require', 'change', e => { CFG.requirePin = e.target.checked; saveCfg(); if (!CFG.requirePin) unlocked = true; toast(CFG.requirePin ? 'The admin area will ask for the PIN.' : 'The admin area no longer asks for the PIN.'); });
 setBump('#set-notify', 'change', e => { CFG.notifyLate = e.target.checked; saveCfg(); renderBell(); });
-setBump('#set-notifymin', 'change', e => { CFG.notifyMin = Math.min(180, Math.max(0, parseInt(e.target.value, 10) || 0)); saveCfg(); e.target.value = CFG.notifyMin; renderBell(); });
 setBump('#set-theme', 'change', e => setTheme(e.target.value));
 setBump('#set-motion', 'change', e => { CFG.reducedMotion = e.target.checked; saveCfg(); applyCfg(); });
 setBump('#set-density', 'change', e => { CFG.density = e.target.value; saveCfg(); applyCfg(); });
