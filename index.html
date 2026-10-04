@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/tailwind.css">
-<link rel="stylesheet" href="css/styles.css?v=4">
+<link rel="stylesheet" href="css/styles.css?v=6">
 </head>
 <body>
 
@@ -166,7 +166,7 @@
         <p id="late-msg" class="text-sm font-medium"></p>
         <label class="lbl mt-3" for="late-note">Reason for being late <span class="muted font-normal">(optional)</span></label>
         <textarea id="late-note" class="input" rows="2" maxlength="140" placeholder="e.g. Heavy traffic on the way"></textarea>
-        <p class="muted text-xs mt-1">Your manager will see this in Notifications.</p>
+        <p class="muted text-xs mt-1">Your manager will see this in Notifications — they can accept it (your late deduction is removed) or reject it (the deduction stays).</p>
       </div>
     </div>
     <div class="flex justify-between gap-3 mt-6"><a href="#/scan" class="ghost">Scan again</a><button id="vbtn" class="btn px-6">Verify identity</button></div>
@@ -214,7 +214,7 @@
       <p class="muted text-sm mt-1">Here’s today’s overview.</p>
       <div id="stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-5"></div>
       <div class="grid lg:grid-cols-2 gap-4 mt-4">
-        <div class="card p-5 min-w-0"><h2 class="font-medium">Attendance overview</h2><p class="muted text-xs mt-1">Last 7 days</p><div id="chart" class="mt-3"></div><div class="flex flex-wrap gap-4 text-xs muted mt-2"><span><i style="color:var(--brand)">●</i> On time</span><span><i style="color:var(--gold)">●</i> Late</span><span><i style="color:var(--err)">●</i> Absent</span></div></div>
+        <div class="card p-5 min-w-0"><h2 class="font-medium">Attendance overview</h2><p class="muted text-xs mt-1">Last 7 days</p><div id="chart" class="mt-3"></div><div class="flex flex-wrap gap-4 text-xs muted mt-2"><span><i style="color:var(--chart-ontime)">●</i> On time</span><span><i style="color:var(--chart-late)">●</i> Late</span><span><i style="color:var(--chart-absent)">●</i> Absent</span></div></div>
         <div class="card p-5 min-w-0"><h2 class="font-medium">Today’s attendance</h2>
           <div class="overflow-auto max-h-72 mt-3"><table class="w-full text-sm"><thead class="muted text-left"><tr><th class="py-2 font-normal">ID</th><th class="font-normal">Name</th><th class="font-normal">Time in</th><th class="font-normal">Status</th></tr></thead><tbody id="rows"></tbody></table></div></div>
       </div>
@@ -364,7 +364,7 @@
           <div class="flex flex-wrap items-center gap-2">
             <select id="ps-per" class="input w-full sm:!w-52" aria-label="Pay period"></select>
             <div class="relative"><button type="button" id="ps-all-dl" class="btn text-sm" aria-haspopup="true" aria-expanded="false">Download all payslips ▾</button>
-            <div id="ps-all-menu" class="card hidden absolute z-30 p-2 shadow-lg min-w-[13rem]" style="top:calc(100% + .25rem)"><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-all="pdf">All as PDF (one file)</button><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-all="docx">All as Word (.docx)</button></div></div>
+            <div id="ps-all-menu" class="card hidden absolute z-30 p-2 shadow-lg min-w-[13rem]" style="top:calc(100% + .25rem)"><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-all="pdf">All as PDF (one file)</button></div></div>
             <input id="ps-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search payslips">
           </div>
           <div class="overflow-auto mt-3"><table class="w-full text-sm min-w-[560px]">
@@ -376,7 +376,7 @@
         <div id="ps-panel" class="hidden min-w-0">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-2"><button type="button" id="ps-close" class="ghost text-sm">✕ Close</button>
             <div class="flex gap-2"><div class="relative"><button type="button" id="ps-dl" class="btn text-sm" aria-haspopup="true" aria-expanded="false">Download payslip ▾</button>
-              <div id="ps-menu" class="card hidden absolute right-0 z-30 p-2 shadow-lg min-w-[13rem]" style="top:calc(100% + .25rem)"><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-fmt="pdf">Download as PDF</button><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-fmt="docx">Download as Word (.docx)</button></div></div></div></div>
+              <div id="ps-menu" class="card hidden absolute right-0 z-30 p-2 shadow-lg min-w-[13rem]" style="top:calc(100% + .25rem)"><button type="button" class="ghost w-full text-left text-sm" style="border:0" data-fmt="pdf">Download as PDF</button></div></div></div></div>
           <div id="ps-doc"></div>
         </div>
       </div>
@@ -405,7 +405,7 @@
           </div>
           <div class="flex flex-wrap items-center justify-between gap-3 mt-4"><p id="p-count" class="muted text-sm"></p><div id="p-pager" class="flex gap-2"></div></div>
           <div id="p-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4"></div>
-          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted. Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the staff is a separate step. Staff stay in the current period until the whole period closes and moves to History.</p>
+          <p class="muted text-xs mt-4">Hours come from Attendance records and Schedules, never typed in. Payroll covers the current week and is calculated live up to today, so it is ready on the payroll date (the last day of the period). Absent days are unpaid, pay is the scheduled hours on days worked (there is no overtime or undertime), and Tardiness and manual Deductions are subtracted (a late reason accepted in Notifications removes that Tardiness deduction). Statuses move Draft → For review → Approved → Processed → Released. Deductions sync automatically while payroll is Draft, For review or Approved. Changing deductions on an Approved record sends it back to For review. Processing locks the figures, and releasing the payslip to the staff is a separate step. Staff stay in the current period until the whole period closes and moves to History.</p>
         </div>
         <div id="p-his" class="hidden">
           <p class="muted text-sm mt-4">Closed pay periods, archived as a whole. Processed payroll is locked and no longer changes if attendance or deductions are edited later.</p>
@@ -437,7 +437,6 @@
             <div><label class="lbl" for="set-email">Email</label><input id="set-email" type="email" class="input"></div>
             <div class="sm:col-span-2"><label class="lbl" for="set-addr">Address</label><input id="set-addr" class="input"></div>
             <div><label class="lbl" for="set-contact">Contact number</label><input id="set-contact" class="input" inputmode="tel" placeholder="0917 123 4567"></div>
-            <div><label class="lbl" for="set-tin">TIN / Employer ID</label><input id="set-tin" class="input" placeholder="000-000-000"></div>
           </div>
           <div class="flex justify-end mt-4"><button class="btn" type="submit">Save profile</button></div>
         </form>
@@ -718,6 +717,6 @@
 
 <div id="toasts" class="fixed left-0 right-0 z-50 flex flex-col items-center gap-2 px-4 pointer-events-none" style="top:calc(1rem + env(safe-area-inset-top,0px))"></div>
 
-<script src="js/app.js?v=3"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

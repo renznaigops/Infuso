@@ -42,7 +42,7 @@ const go = h => { if (location.hash === '#/' + h) route(); else location.hash = 
 
 /* ---------- Settings (persisted preferences, stored under 'cfg') ---------- */
 const CFG_DEF = {
-  address: 'Bulacan, Philippines', contact: '', email: '', tin: '', // business profile (name lives on the account)
+  address: 'Bulacan, Philippines', contact: '', email: '', // business profile (name lives on the account)
   grace: 15, blockUnsched: true,                                    // attendance rules
   fallbackRate: 80, psNote: 'Thank you for your hard work!', psSignatory: 'Authorized Signature', // payroll defaults
   notifyLate: true, notifyMin: 0,                                  // dashboard bell
@@ -391,13 +391,23 @@ $('#vbtn').addEventListener('click', async () => {
 });
 
 /* ---------- Dashboard ---------- */
+/* Late-reason requests: the reason typed on Confirm Attendance lands in the bell as a request.
+   Owner accepts -> that day's automatic Tardiness deduction is waived; rejects -> it stays.
+   Keys match the auto deduction (a-{id}-{date}-t), so autoDeds() can skip accepted ones. */
+let REQ = store.get('lateReq', []); // [{ k, id, date, dec: 'ok' | 'no', ts }] — persisted in localStorage
+const saveReq = () => store.set('lateReq', REQ);
+const reqOf = k => REQ.find(r => r.k === k); // undefined = still waiting for the owner
+const isWaived = k => (reqOf(k) || {}).dec === 'ok';
 function lateNotifs() { // today's late time-ins, newest first — employee reasons ride along on the log entry
   const today = new Date().toDateString(), t = logs().filter(x => new Date(x.ts).toDateString() === today);
   const seen = new Set();
   return t.filter(x => x.type === 'in' && EMP[x.id] && EMP[x.id].active && !seen.has(x.id) && seen.add(x.id))
     .map(x => {
       const d = new Date(x.ts), m = d.getHours() * 60 + d.getMinutes(), s = startOf(x.id);
-      const mins = m - s; return m > s + GRACE && mins >= (CFG.notifyMin || 0) ? { ...x, mins, sin: s } : null;
+      const mins = m - s;
+      if (!(m > s + GRACE && mins >= (CFG.notifyMin || 0))) return null;
+      const k = `a-${x.id}-${dkey(d)}-t`, r = reqOf(k); // same key the automatic Tardiness deduction uses
+      return { ...x, mins, sin: s, k, dec: r ? r.dec : null };
     }).filter(Boolean).sort((a, b) => b.ts - a.ts);
 }
 function renderBell() {
@@ -405,13 +415,20 @@ function renderBell() {
   const dot = $('#bell-dot');
   if (!CFG.notifyLate) { dot.classList.add('hidden'); dot.textContent = ''; panel.innerHTML = '<p class="muted text-sm">Late-arrival alerts are turned off in Settings.</p>'; return; }
   const items = lateNotifs();
-  dot.textContent = items.length ? (items.length > 9 ? '9+' : String(items.length)) : ''; // unread count on the badge
-  dot.classList.toggle('hidden', !items.length);
+  const pend = items.filter(x => !x.dec).length; // the badge counts requests still waiting on the owner
+  dot.textContent = pend ? (pend > 9 ? '9+' : String(pend)) : '';
+  dot.classList.toggle('hidden', !pend);
   panel.innerHTML = items.length ? `<div class="w-full text-left space-y-2 max-h-80 overflow-auto">`
     + `<p class="text-sm font-medium px-1">Late arrivals today (${items.length})</p>`
     + items.map(x => `<div class="card p-3"><div class="text-sm font-medium">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div>`
       + `<div class="muted text-xs mt-0.5">${fmtTime(x.ts)} · Scheduled ${fmtMin(x.sin)} · Late by ${x.mins} min</div>`
-      + `<div class="text-sm mt-1">${x.note ? `“${esc(x.note)}”` : '<span class="muted">No reason given.</span>'}</div></div>`).join('')
+      + `<div class="text-sm mt-1">${x.note ? `“${esc(x.note)}”` : '<span class="muted">No reason given.</span>'}</div>`
+      + (x.dec === 'ok' ? `<div class="mt-1.5"><span class="badge b-ok">Accepted · deduction removed</span></div>`
+        : x.dec === 'no' ? `<div class="mt-1.5"><span class="badge b-err">Rejected · deduction stays</span></div>`
+        : `<p class="muted text-xs mt-1.5">Tardiness ${peso(dedAmt(x.id, x.mins))} · Accept waives it, Reject keeps it.</p>`
+          + `<div class="flex gap-2 mt-1.5"><button class="ghost !py-1 !px-2 text-xs" style="color:var(--ok);border-color:var(--ok)" data-reqk="${x.k}" data-dec="ok" aria-label="Accept late reason">Accept</button>`
+          + `<button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-reqk="${x.k}" data-dec="no" aria-label="Reject late reason">Reject</button></div>`)
+      + `</div>`).join('')
     + `</div>` : '<p class="muted text-sm">No notifications</p>';
 }
 function renderDash() {
@@ -445,6 +462,19 @@ $('#bell').addEventListener('click', e => {
   if (panel.classList.contains('hidden')) renderBell(); // fresh late list + reasons each time it opens
   panel.classList.toggle('hidden');
   $('#bell').setAttribute('aria-expanded', String(!panel.classList.contains('hidden')));
+});
+$('#bell-panel').addEventListener('click', async e => { // Accept / Reject a late reason
+  const b = e.target.closest('[data-reqk]'); if (!b) return;
+  const k = b.dataset.reqk, dec = b.dataset.dec, x = lateNotifs().find(n => n.k === k);
+  if (!x || reqOf(k)) return; // stale render or already decided
+  if (dec === 'ok') {
+    const yes = await confirmCard({ title: 'Accept late reason?', msg: `Remove the ${peso(dedAmt(x.id, x.mins))} Tardiness deduction for ${x.name} (${x.id})?`, ok: 'Accept', tone: 'ok' });
+    if (!yes) return;
+    reopenIfApproved(x.id, dkey(new Date(x.ts))); // approved figures changed, so that record goes back to For review
+  }
+  REQ.push({ k, id: x.id, date: dkey(new Date(x.ts)), dec, ts: Date.now() }); saveReq();
+  toast(dec === 'ok' ? `${x.name}: reason accepted — the late deduction was removed.` : `${x.name}: rejected — the late deduction stays.`);
+  renderBell();
 });
 document.addEventListener('click', e => {
   const panel = $('#bell-panel');
@@ -490,7 +520,7 @@ function renderChart(todayData) {
     const x = pl + gap / 2 + i * (bw + gap); let y = H - pb;
     const tot = sy(p + l + a);
     s += `<mask id="fm${i}"><rect x="${x}" y="${H - pb - tot}" width="${bw}" height="${tot}" fill="url(#fg)"/></mask><g><title>${days[i]}: ${p} on time, ${l} late, ${a} absent</title><g class="bar-anim"><g mask="url(#fm${i})">`;
-    [[p, 'var(--brand)'], [l, 'var(--gold)'], [a, 'var(--err)']].forEach(([v, c]) => { const h = sy(v); y -= h; s += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}" rx="3"/>`; });
+    [[p, 'var(--chart-ontime)'], [l, 'var(--chart-late)'], [a, 'var(--chart-absent)']].forEach(([v, c]) => { const h = sy(v); y -= h; s += `<rect x="${x}" y="${y}" width="${bw}" height="${h}" fill="${c}" rx="3"/>`; });
     s += '</g></g>';
     s += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--muted)">${days[i]}</text></g>`;
   });
@@ -507,7 +537,7 @@ async function resetDemo() {
   Object.keys(SCH).forEach(k => delete SCH[k]); saveSch();
   Object.keys(EMP).forEach(k => delete EMP[k]); Object.assign(EMP, defaultEmps()); saveEmps();
   resetPay(); pSel.clear(); hSel = null;
-  store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset.');
+  store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); REQ.length = 0; saveReq(); route(); toast('Demo data reset.');
 }
 $('#reset').addEventListener('click', resetDemo);
 
@@ -917,7 +947,8 @@ function autoDeds(from, to) {
   for (let d = new Date(to); d >= from; d = addDays(d, -1)) Object.entries(EMP).forEach(([id, e]) => {
     if (!e.active || e.draft || d < new Date(e.hired + 'T00:00')) return;
     const r = attRecord(id, d), date = dkey(d);
-    if (r.st === 'late') { const m = r.tin - r.s.in; out.push({ k: `a-${id}-${date}-t`, auto: true, date, id, type: 'tardiness', amount: dedAmt(id, m), remarks: `Late by ${m} minute${m === 1 ? '' : 's'}` }); }
+    const k = `a-${id}-${date}-t`;
+    if (r.st === 'late' && !isWaived(k)) { const m = r.tin - r.s.in; out.push({ k, auto: true, date, id, type: 'tardiness', amount: dedAmt(id, m), remarks: `Late by ${m} minute${m === 1 ? '' : 's'}` }); } // accepted late reasons are waived in Notifications
   });
   return out;
 }
@@ -999,7 +1030,7 @@ function renderDeductions() {
     : '<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No deductions match your filters.</td></tr>';
   $('#d-count').textContent = all.length ? `Showing ${at + 1} to ${at + part.length} of ${all.length} records` : 'Showing 0 records';
   $('#d-pager').innerHTML = dpager(dPage, pages);
-  $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) is generated from Attendance and Schedules: hourly rate ÷ 60 × minutes late (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours. There is no overtime or undertime.`;
+  $('#d-note').textContent = `Tardiness (late beyond ${GRACE} min) is generated from Attendance and Schedules: hourly rate ÷ 60 × minutes late (₱${DEF_RATE}/hr if no rate is set). Absent days are unpaid. On days worked, payroll pays the scheduled hours. There is no overtime or undertime. A late reason accepted in Notifications is waived and never deducted.`;
 }
 function refreshDedTypes(pick) { // keeps the filter and the Add deduction drop-down in step with the saved types
   const opt = (k, v) => `<option value="${esc(k)}">${esc(v)}</option>`, cf = $('#d-type').value;
@@ -1341,11 +1372,11 @@ $('#r-pager').addEventListener('click', e => { const b = e.target.closest('butto
 $('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, new Date(b.dataset.k + 'T00:00'), false, true); });
 $('#r-exp').addEventListener('click', e => { e.stopPropagation(); $('#r-menu').classList.toggle('hidden'); });
 addEventListener('click', () => $('#r-menu').classList.add('hidden'));
-addEventListener('afterprint', () => document.body.classList.remove('print-report'));
+addEventListener('afterprint', () => { document.body.classList.remove('print-report'); const st = document.getElementById('rpt-page'); if (st) st.remove(); }); // the landscape @page lives only for the reports export
 $('#r-menu').addEventListener('click', e => {
   const b = e.target.closest('[data-exp]'); if (!b) return;
   if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
-  if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); window.print(); return; }
+  if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); let st = document.getElementById('rpt-page'); if (!st) { st = document.createElement('style'); st.id = 'rpt-page'; document.head.appendChild(st); } st.textContent = '@page { size: landscape; margin: 10mm; }'; window.print(); return; } // rotate the sheet 90° (landscape) so the whole table fits
   const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
   const comb = rView.scope !== 'period'; // the file always mirrors the view on screen
   const head = ['Staff ID', 'Staff Name', 'Position', comb ? 'Pay Periods Covered' : 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'];
@@ -1372,7 +1403,7 @@ function dayLog(id, s) {
   }
   return out;
 }
-function psData(id, s) { // one source for the payslip numbers, so the screen, the PDF and the .docx can never disagree
+function psData(id, s) { // one source for the payslip numbers, so the screen and the PDF can never disagree
   const e = EMP[id], c = payGet(id, s), log = c.log || dayLog(id, s), g = {};
   c.ds.forEach(x => g[x.type] = (g[x.type] || 0) + x.amount);
   return { e, c, log, g, days: log.map(l => {
@@ -1417,70 +1448,6 @@ function renderPayslips() {
   if (!sel) psSel = null;
   $('#ps-panel').classList.toggle('hidden', !sel); $('#ps-wrap').classList.toggle('open', !!sel);
   if (sel) { $('#ps-doc').innerHTML = psHtml(sel.id, s, sel.st); $('#ps-dl').disabled = sel.st !== 'released'; }
-}
-/* ---------- Payslip download: PDF (print, same .ps markup as the screen) or Word (.docx) ---------- */
-/* A .docx is a ZIP of XML parts. We build it with a tiny stored-entry (uncompressed) ZIP writer, so there
-   is still no build step and no library; Word, LibreOffice and Google Docs all open the result. */
-const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
-const crc32 = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
-function zipFiles(files) { // [{ name, data }] -> Blob of a valid uncompressed zip
-  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
-  const dt = new Date(), dosT = (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >> 1), dosD = ((dt.getFullYear() - 1980) << 9) | ((dt.getMonth() + 1) << 5) | dt.getDate();
-  files.forEach(f => {
-    const name = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data);
-    const lh = new Uint8Array(30 + name.length), lv = new DataView(lh.buffer);
-    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(6, 0x0800, true); lv.setUint16(8, 0, true);
-    lv.setUint16(10, dosT, true); lv.setUint16(12, dosD, true); lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true);
-    lv.setUint32(22, data.length, true); lv.setUint16(26, name.length, true); lv.setUint16(28, 0, true); lh.set(name, 30);
-    parts.push(lh, data);
-    const ch = new Uint8Array(46 + name.length), cv = new DataView(ch.buffer);
-    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint16(8, 0x0800, true); cv.setUint16(10, 0, true);
-    cv.setUint16(12, dosT, true); cv.setUint16(14, dosD, true); cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true);
-    cv.setUint32(24, data.length, true); cv.setUint16(28, name.length, true); cv.setUint32(42, off, true); ch.set(name, 46);
-    central.push(ch); off += lh.length + data.length;
-  });
-  const cd = central.reduce((n, c) => n + c.length, 0), end = new Uint8Array(22), ev = new DataView(end.buffer);
-  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
-  ev.setUint32(12, cd, true); ev.setUint32(16, off, true);
-  return new Blob([...parts, ...central, end], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-}
-const xesc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
-/* Word cell/table helpers: reproduce the .ps table look (beige header, bold totals, right-aligned money) */
-const wCell = (w, txt, o = {}) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${o.span ? `<w:gridSpan w:val="${o.span}"/>` : ''}${o.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>` : ''}<w:tcMar><w:top w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/></w:tcMar></w:tcPr>`
-  + `<w:p><w:pPr>${o.align ? `<w:jc w:val="${o.align}"/>` : ''}<w:spacing w:after="0"/></w:pPr><w:r><w:rPr>${o.bold ? '<w:b/>' : ''}<w:color w:val="${o.color || '2B211B'}"/><w:sz w:val="${o.sz || 20}"/>${o.upper ? '<w:caps/>' : ''}</w:rPr><w:t xml:space="preserve">${xesc(txt)}</w:t></w:r></w:p></w:tc>`;
-const wP = (txt, o = {}) => `<w:p><w:pPr>${o.after ? `<w:spacing w:after="${o.after}"/>` : ''}${o.align ? `<w:jc w:val="${o.align}"/>` : ''}</w:pPr><w:r><w:rPr>${o.bold ? '<w:b/>' : ''}<w:color w:val="${o.color || '2B211B'}"/><w:sz w:val="${o.sz || 20}"/>${o.upper ? '<w:caps/>' : ''}</w:rPr><w:t xml:space="preserve">${xesc(txt)}</w:t></w:r></w:p>`;
-const wGrid = w => `<w:tblGrid>${w.map(x => `<w:gridCol w:w="${x}"/>`).join('')}</w:tblGrid>`;
-const wBorders = inner => `<w:tblBorders>${inner}<w:top w:val="none" w:sz="0" w:color="auto"/><w:left w:val="none" w:sz="0" w:color="auto"/><w:right w:val="none" w:sz="0" w:color="auto"/><w:insideV w:val="none" w:sz="0" w:color="auto"/></w:tblBorders>`;
-function psDocx(id, s) { // same sections, labels and figures as the on-screen payslip
-  const { e, c, g, days } = psData(id, s), END = weekEnd(s);
-  const CW = [2900, 850, 1450, 1450, 1550], MW = [2400, 1500], HDR = { fill: 'F5EEE6', color: '806F62', sz: 15, upper: true };
-  const rows = days.map(l => `<w:tr>${wCell(CW[0], l.date)}${wCell(CW[1], l.day)}${wCell(CW[2], l.tin != null ? fmtMin(l.tin) : l.lbl, { color: l.tin != null ? '2B211B' : '806F62' })}${wCell(CW[3], l.tout != null ? fmtMin(l.tout) : '—')}${wCell(CW[4], l.tin != null ? fmtHM(l.hrs) : '—', { align: 'right' })}</w:tr>`).join('');
-  const att = `<w:tbl><w:tblPr><w:tblW w:w="8200" w:type="dxa"/>${wBorders('<w:insideH w:val="single" w:sz="4" w:color="F7EFE5"/><w:bottom w:val="single" w:sz="4" w:color="F2EAE0"/>')}</w:tblPr>${wGrid(CW)}`
-    + `<w:tr>${wCell(CW[0], 'DATE', HDR)}${wCell(CW[1], 'DAY', HDR)}${wCell(CW[2], 'TIME IN', HDR)}${wCell(CW[3], 'TIME OUT', HDR)}${wCell(CW[4], 'TOTAL HOURS', { ...HDR, align: 'right' })}</w:tr>${rows}`
-    + `<w:tr>${wCell(CW[0] + CW[1] + CW[2] + CW[3], 'Total Hours Worked', { fill: 'F5EEE6', bold: true, align: 'right', span: 4 })}${wCell(CW[4], fmtHM(c.mins), { fill: 'F5EEE6', bold: true, align: 'right' })}</w:tr></w:tbl>`;
-  const money = (label, val) => `<w:tbl><w:tblPr><w:tblW w:w="3900" w:type="dxa"/>${wBorders('<w:bottom w:val="single" w:sz="4" w:color="F2EAE0"/>')}</w:tblPr>${wGrid(MW)}`
-    + `<w:tr>${wCell(MW[0], 'DESCRIPTION', HDR)}${wCell(MW[1], 'AMOUNT (₱)', { ...HDR, align: 'right' })}</w:tr>`
-    + `<w:tr>${wCell(MW[0], label, { fill: 'F5EEE6', bold: true })}${wCell(MW[1], val, { fill: 'F5EEE6', bold: true, align: 'right' })}</w:tr></w:tbl>`;
-  const dedRows = Object.entries(g).map(([t, v]) => `<w:tr>${wCell(MW[0], dedName(t))}${wCell(MW[1], num(v), { align: 'right' })}</w:tr>`).join('') || `<w:tr>${wCell(MW[0], 'No deductions')}${wCell(MW[1], '0.00', { align: 'right' })}</w:tr>`;
-  const ded = `<w:tbl><w:tblPr><w:tblW w:w="3900" w:type="dxa"/>${wBorders('<w:insideH w:val="single" w:sz="4" w:color="F7EFE5"/><w:bottom w:val="single" w:sz="4" w:color="F2EAE0"/>')}</w:tblPr>${wGrid(MW)}`
-    + `<w:tr>${wCell(MW[0], 'DESCRIPTION', HDR)}${wCell(MW[1], 'AMOUNT (₱)', { ...HDR, align: 'right' })}</w:tr>${dedRows}`
-    + `<w:tr>${wCell(MW[0], 'TOTAL DEDUCTIONS', { fill: 'F5EEE6', bold: true })}${wCell(MW[1], peso(c.ded), { fill: 'F5EEE6', bold: true, align: 'right' })}</w:tr></w:tbl>`;
-  const info = [['Staff Name', e.name], ['Staff ID', id], ['Position', e.pos], ['Pay Period', `${longD(s)} – ${longD(END)}`], ['Pay Date', longD(END)]];
-  const body = wP('STAFF PAYSLIP', { bold: true, sz: 26, after: 60 })
-    + wP(bizName(), { bold: true, sz: 22, align: 'right' }) + wP(bizAddr(), { color: '806F62', align: 'right', sz: 18 })
-    + (CFG.contact ? wP(CFG.contact, { color: '806F62', align: 'right', sz: 18 }) : '')
-    + info.map(([k, v]) => `<w:p><w:pPr><w:spacing w:after="20"/><w:tabs><w:tab w:val="left" w:pos="1600"/></w:tabs></w:pPr><w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${xesc(k)}</w:t></w:r><w:r><w:sz w:val="20"/><w:tab/><w:t xml:space="preserve">: ${xesc(v)}</w:t></w:r></w:p>`).join('')
-    + wP('1. Attendance summary', { bold: true, sz: 19, upper: true, after: 80 }) + att
-    + wP('2. Earnings / gross pay', { bold: true, sz: 19, upper: true, after: 80 }) + money('GROSS PAY', peso(c.gross))
-    + wP('3. Deductions', { bold: true, sz: 19, upper: true, after: 80 }) + ded
-    + `<w:tbl><w:tblPr><w:tblW w:w="3900" w:type="dxa"/>${wBorders('')}</w:tblPr>${wGrid(MW)}<w:tr>${wCell(MW[0], 'NET PAY', { fill: 'FBF3E8', bold: true, sz: 24 })}${wCell(MW[1], peso(c.net), { fill: 'FBF3E8', bold: true, sz: 24, align: 'right' })}</w:tr></w:tbl>`
-    + wP(CFG.psNote, { color: '806F62', sz: 18, after: 320 }) + wP('_'.repeat(30), { color: '806F62', sz: 18 }) + wP(CFG.psSignatory, { align: 'right', color: '806F62', sz: 18 });
-  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>`;
-  return zipFiles([
-    { name: '[Content_Types].xml', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>` },
-    { name: '_rels/.rels', data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>` },
-    { name: 'word/document.xml', data: doc },
-  ]);
 }
 $('#ps-per').addEventListener('input', () => { psSel = null; psPage = 1; renderPayslips(); });
 $('#ps-q').addEventListener('input', () => { psPage = 1; renderPayslips(); });
@@ -1629,17 +1596,14 @@ function releasedSlips() {
   const k = $('#ps-per').value, s = new Date(k + 'T00:00');
   return { s, rows: payRows(s, k !== dkey(curStart())).filter(r => r.st === 'released') };
 }
-function downloadSlip(id, s, fmt) { // both formats download a real file; nothing opens a print dialog
-  const f = fmt === 'docx' ? psDocx : psPdf, ext = fmt === 'docx' ? 'docx' : 'pdf';
-  saveBlob(f([{ id, s }]), `payslip-${id}-${dkey(s)}.${ext}`);
+function downloadSlip(id, s) { // downloads a real .pdf file; nothing opens a print dialog
+  saveBlob(psPdf([{ id, s }]), `payslip-${id}-${dkey(s)}.pdf`);
 }
-function downloadAllPayslips(fmt) {
+function downloadAllPayslips() {
   const { s, rows } = releasedSlips();
   if (!rows.length) { toast('No released payslips are available for this pay period.', 'err'); return; }
-  const list = rows.map(r => ({ id: r.id, s }));
-  if (fmt === 'docx') { rows.forEach((r, i) => setTimeout(() => saveBlob(psDocx(r.id, s), `payslip-${r.id}-${dkey(s)}.docx`), i * 120)); } // browsers throttle bursts, so stagger the saves
-  else saveBlob(psPdf(list), `payslips_${dkey(s)}_to_${dkey(weekEnd(s))}.pdf`); // one file, one slip per page
-  toast(`Downloading ${rows.length} payslip${rows.length === 1 ? '' : 's'} as ${fmt === 'docx' ? 'Word documents' : 'one PDF'}.`);
+  saveBlob(psPdf(rows.map(r => ({ id: r.id, s }))), `payslips_${dkey(s)}_to_${dkey(weekEnd(s))}.pdf`); // one file, one slip per page
+  toast(`Downloading ${rows.length} payslip${rows.length === 1 ? '' : 's'} as one PDF.`);
 }
 const closePsMenus = () => { $('#ps-menu').classList.add('hidden'); $('#ps-all-menu').classList.add('hidden'); $('#ps-dl').setAttribute('aria-expanded', 'false'); $('#ps-all-dl').setAttribute('aria-expanded', 'false'); };
 $('#ps-dl').addEventListener('click', e => {
@@ -1652,8 +1616,8 @@ $('#ps-all-dl').addEventListener('click', e => {
   const m = $('#ps-all-menu'), open = m.classList.contains('hidden'); closePsMenus();
   m.classList.toggle('hidden', !open); $('#ps-all-dl').setAttribute('aria-expanded', String(open));
 });
-$('#ps-menu').addEventListener('click', e => { const b = e.target.closest('[data-fmt]'); if (b && psSel) { downloadSlip(psSel.id, new Date(psSel.k + 'T00:00'), b.dataset.fmt); closePsMenus(); } });
-$('#ps-all-menu').addEventListener('click', e => { const b = e.target.closest('[data-all]'); if (b) { downloadAllPayslips(b.dataset.all); closePsMenus(); } });
+$('#ps-menu').addEventListener('click', e => { const b = e.target.closest('[data-fmt]'); if (b && psSel) { downloadSlip(psSel.id, new Date(psSel.k + 'T00:00')); closePsMenus(); } });
+$('#ps-all-menu').addEventListener('click', e => { const b = e.target.closest('[data-all]'); if (b) { downloadAllPayslips(); closePsMenus(); } });
 document.addEventListener('click', e => { if (!e.target.closest('#ps-menu, #ps-dl, #ps-all-menu, #ps-all-dl')) closePsMenus(); });
 addEventListener('keydown', e => { if (e.key === 'Escape') closePsMenus(); });
 
@@ -1683,7 +1647,7 @@ function renderSettings() {
   $('#set-biz').value = (sess && sess.business) || bizName();
   $('#set-name').value = (sess && sess.name) || '';
   $('#set-email').value = (sess && sess.email) || CFG.email || '';
-  $('#set-addr').value = CFG.address; $('#set-contact').value = CFG.contact; $('#set-tin').value = CFG.tin;
+  $('#set-addr').value = CFG.address; $('#set-contact').value = CFG.contact;
   $('#set-grace').value = GRACE; $('#set-block').checked = CFG.blockUnsched;
   $('#set-rate').value = DEF_RATE; $('#set-note').value = CFG.psNote; $('#set-sign').value = CFG.psSignatory;
   $('#set-require').checked = CFG.requirePin;
@@ -1706,7 +1670,7 @@ setBump('#set-profile', 'submit', e => { // business profile -> account (name) +
   const biz = $('#set-biz').value.trim() || 'InfusoPay';
   if (sess) { sess.business = biz; sess.name = $('#set-name').value.trim() || sess.name; sess.email = $('#set-email').value.trim(); store.set('acct', sess); }
   CFG.address = $('#set-addr').value.trim() || CFG_DEF.address;
-  CFG.contact = $('#set-contact').value.trim(); CFG.email = $('#set-email').value.trim(); CFG.tin = $('#set-tin').value.trim();
+  CFG.contact = $('#set-contact').value.trim(); CFG.email = $('#set-email').value.trim();
   saveCfg(); renderDash(); renderSettings(); toast('Business profile saved.');
 });
 setBump('#set-grace', 'change', e => { CFG.grace = Math.min(120, Math.max(0, parseInt(e.target.value, 10) || 0)); GRACE = CFG.grace; saveCfg(); e.target.value = GRACE; toast('Grace period updated.'); });

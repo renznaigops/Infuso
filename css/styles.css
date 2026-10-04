@@ -4,12 +4,16 @@
   --bg: #f3f1ee; --surface: #ffffff; --line: #e2ddd6; --line-soft: #edeae5; --text: #241d18; --muted: #6c625a;
   --brand: #4a2f21; --brand-ink: #ffffff; --side: #231a15; --gold: #d4a017; --accent: #4a2f21; --ink: #ffffff; --beige: #e2ddd6;
   --night: #3d6b7a; --ok: #2e7d52; --err: #b3423e; --warn: #a86b0c; --scheduled: #2e7d52; --dayoff: #b3423e;
+  /* Attendance stackbar segments — own tokens because dark mode sets --brand === --gold */
+  --chart-ontime: #4a2f21; --chart-late: #d4a017; --chart-absent: #b3423e;
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
 }
 :root[data-theme="dark"] {
   --bg: #181310; --surface: #221b16; --line: #3a2f28; --line-soft: #2d241f; --text: #f3ece5; --muted: #b3a699;
   --brand: #e0b97a; --brand-ink: #241d18; --side: #120e0c; --gold: #e0b97a; --accent: #e0b97a; --ink: #241d18; --beige: #3a2f28;
   --night: #7fb0c0; --ok: #7bc096; --err: #e58b86; --warn: #e3b04b; --scheduled: #7bc096; --dayoff: #e58b86;
+  /* Stackbar: three clearly distinct segments (caramel / gold / salmon) on the dark surface */
+  --chart-ontime: #a86c33; --chart-late: #e0b97a; --chart-absent: #e58b86;
 }
 html { scroll-padding-top: env(safe-area-inset-top, 0px); }
 html, body { height: 100%; }
@@ -175,9 +179,21 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 @media print {
-  body.print-report #sidebar, body.print-report #overlay, body.print-report header, body.print-report .no-print, body.print-report #theme, body.print-report #toasts, body.print-report #pay-modal, body.print-report #card-sheet { display: none !important; }
+  body.print-report #sidebar, body.print-report #overlay, body.print-report header, body.print-report .no-print, body.print-report #theme, body.print-report #toasts, body.print-report #pay-modal, body.print-report #card-sheet { display: none !important; } body.print-report #r-sum { display: none !important; } /* bottom totals card is screen-only */
   body.print-report, body.print-report .view, body.print-report .view > div, body.print-report .view > div > div { height: auto !important; overflow: visible !important; }
-  body.print-report main { overflow: visible !important; padding: 0 !important; }
+  body.print-report main { overflow: visible !important; padding: 0 !important; } body.print-report .overflow-auto { overflow: visible !important; } body.print-report main table { min-width: 0 !important; } /* full table width on the rotated sheet */
+}
+/* Reports export (landscape, single sheet): the top summary card is minimized and spacing is tightened so the header, the stats and the whole table land on page 1 */
+@media print {
+  body.print-report #r-label { margin-top: .4rem; }
+  body.print-report #r-stats { margin-top: .4rem; grid-template-columns: repeat(5, minmax(0, 1fr)); } /* one row of five, never dependent on the lg: breakpoint */
+  body.print-report #r-stats > .card { padding: .35rem .7rem; }
+  body.print-report #r-stats > .card > * { margin-top: 0; }
+  body.print-report #r-stats > .card > .muted { font-size: .66rem; line-height: 1.35; }
+  body.print-report #r-stats > .card > .text-2xl { font-size: .95rem; line-height: 1.2; }
+  body.print-report #r-stats + .card { margin-top: .6rem; padding: .6rem .8rem; } /* the records card that follows the summary strip */
+  body.print-report #page-reports th { padding-top: .25rem; padding-bottom: .25rem; }
+  body.print-report #page-reports tbody td { padding-top: .35rem; padding-bottom: .35rem; }
 }
 
 /* Payslips */
