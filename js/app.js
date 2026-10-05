@@ -1093,10 +1093,21 @@ $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefau
    Absences are NOT deducted: payroll pays only hours worked (avoids double-deducting). */
 let DEF_RATE = CFG.fallbackRate; const MAX_DAYS = 92; // ₱/hr used only if a staff has no rate (fixed value now, no Settings field); max range
 const DED_TYPES = { tardiness: 'Tardiness', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
+const DED_TYPES_BUILTIN = { ...DED_TYPES }; // demo defaults, restored by Reset demo data
 const DED_MANUAL = ['tardiness', 'advance', 'uniform', 'lostid']; // fixed types shown in the filter and in Add deduction (Tardiness is also generated automatically); "Other" is added last and lets the admin type a new one
 const DED_BADGE = { tardiness: 'b-err', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
 const DED_CUSTOM = store.get('dedTypes', []).filter(c => c && c.k && c.label); // types typed via "Other": [{ k, label }]. Empty at first, saved in localStorage
 DED_CUSTOM.forEach(c => { DED_TYPES[c.k] = c.label; DED_BADGE[c.k] = 'b-muted'; });
+/* Per-type settings edited on the Settings card: { on, label, amt }. Stored under its own key, so an
+   older backup without it still loads (every type defaults to on, its own name and no default amount). */
+const DED_CFG = store.get('dedCfg', null) || {};
+const saveDedCfg = () => store.set('dedCfg', DED_CFG);
+const allTypes = () => [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other']; // built-ins, then custom, "Other" last
+const dedOn = k => DED_CFG[k]?.on !== false; // on unless it was switched off on the Settings card
+const enabledTypes = () => allTypes().filter(dedOn); // what the filter and the Add deduction drop-down offer
+const dedAmtOf = k => Number(DED_CFG[k]?.amt) || 0; // default amount, pre-filled when the type is picked
+const defaultDedType = () => enabledTypes().find(k => k !== 'tardiness') || enabledTypes()[0] || 'advance'; // never default to the auto-generated Tardiness
+Object.keys(DED_CFG).forEach(k => { const s = DED_CFG[k]; if (s && s.label && DED_TYPES[k]) DED_TYPES[k] = s.label; }); // apply renames
 const dedName = t => DED_TYPES[t] || 'Other'; // safe label lookup (call esc() when putting it in HTML)
 const rateOf = id => EMP[id]?.rate > 0 ? EMP[id].rate : DEF_RATE;
 const dedAmt = (id, mins) => Math.round(rateOf(id) / 60 * mins * 100) / 100; // hourly rate ÷ 60 × minutes
@@ -1198,26 +1209,38 @@ function renderDeductions() {
 }
 function refreshDedTypes(pick) { // keeps the filter and the Add deduction drop-down in step with the saved types
   const opt = (k, v) => `<option value="${esc(k)}">${esc(v)}</option>`, cf = $('#d-type').value;
-  const keys = [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other']; // same list for both drop-downs; "Other" always last
+  const keys = enabledTypes(); // only the types switched on in Settings are offered
   const fKeys = keys.filter(k => k !== 'other'); // the filter has no "Other": records typed through it are found under their own saved type
   $('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + fKeys.map(k => opt(k, DED_TYPES[k])).join('');
   $('#d-type').value = fKeys.includes(cf) ? cf : '';
   $('#dm-type').innerHTML = keys.map(k => opt(k, DED_TYPES[k])).join('');
-  if (pick) $('#dm-type').value = pick;
+  if (pick && keys.includes(pick)) $('#dm-type').value = pick;
 }
-function resetDedTypes() { DED_CUSTOM.forEach(c => { delete DED_TYPES[c.k]; delete DED_BADGE[c.k]; }); DED_CUSTOM.length = 0; store.set('dedTypes', DED_CUSTOM); refreshDedTypes(); }
+function resetDedTypes() { // custom types plus the Settings edits (rename / off / default amount) go back to the demo defaults
+  DED_CUSTOM.forEach(c => { delete DED_TYPES[c.k]; delete DED_BADGE[c.k]; }); DED_CUSTOM.length = 0; store.set('dedTypes', DED_CUSTOM);
+  Object.keys(DED_CFG).forEach(k => delete DED_CFG[k]); saveDedCfg(); Object.assign(DED_TYPES, DED_TYPES_BUILTIN);
+  refreshDedTypes(); paintDedManager();
+}
 refreshDedTypes();
 ['#d-per', '#d-from', '#d-to', '#d-emp', '#d-type', '#d-q'].forEach(s => $(s).addEventListener('input', () => { dPage = 1; renderDeductions(); }));
 $('#d-pager').addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.disabled) { dPage = +b.dataset.p; renderDeductions(); } });
 
 const dModal = $('#ded-modal');
 let dEdit = null;
+const prefAmt = () => { // a default amount from the Settings card pre-fills a brand-new deduction (edits keep their own amount)
+  if (dEdit) return; const a = dedAmtOf($('#dm-type').value); if (a > 0) $('#dm-amt').value = a;
+};
 function openDed(k) {
   dEdit = k || null; const r = k ? DED.find(x => x.k === k) : null;
   $('#dm-emp').innerHTML = '<option value="">Select staff</option>' + Object.entries(EMP).filter(([id, e]) => (e.active && !e.draft) || id === r?.id).map(([id, e]) => `<option value="${id}">${id} · ${esc(e.name)}</option>`).join('');
   $('#dm-title').textContent = r ? 'Edit deduction' : 'Add deduction';
-  $('#dm-emp').value = r?.id || ''; $('#dm-type').value = r?.type || 'advance'; $('#dm-date').value = r?.date || dkey(new Date()); $('#dm-date').max = dkey(new Date());
+  $('#dm-emp').value = r?.id || ''; $('#dm-type').value = r?.type || defaultDedType(); $('#dm-date').value = r?.date || dkey(new Date()); $('#dm-date').max = dkey(new Date());
+  if (r && !$('#dm-type').value) { // the record’s type is switched off in Settings — still offer it, so the record stays editable
+    $('#dm-type').insertAdjacentHTML('afterbegin', `<option value="${esc(r.type)}">${esc(DED_TYPES[r.type] || 'Other')}</option>`);
+    $('#dm-type').value = r.type;
+  }
   $('#dm-amt').value = r?.amount ?? ''; $('#dm-rem').value = r?.remarks || ''; $('#dm-other').value = ''; paintOther();
+  if (!r) prefAmt();
   dModal.classList.remove('hidden'); dModal.classList.add('flex'); $('#dm-emp').focus();
 }
 const closeDed = () => { dModal.classList.add('hidden'); dModal.classList.remove('flex'); };
@@ -1231,7 +1254,7 @@ function commitOther() { // the typed name becomes a saved deduction type. Retur
   const k = 'c' + Date.now().toString(36); DED_CUSTOM.push({ k, label: name }); DED_TYPES[k] = name; DED_BADGE[k] = 'b-muted';
   store.set('dedTypes', DED_CUSTOM); refreshDedTypes(k); toast('Deduction type added.'); return k;
 }
-$('#dm-type').addEventListener('change', () => { paintOther(); if (!$('#dm-other-w').classList.contains('hidden')) $('#dm-other').focus(); });
+$('#dm-type').addEventListener('change', () => { paintOther(); prefAmt(); if (!$('#dm-other-w').classList.contains('hidden')) $('#dm-other').focus(); });
 $('#dm-other').addEventListener('keydown', e => { // Enter saves the typed name to the drop-down straight away instead of submitting the form
   if (e.key !== 'Enter') return; e.preventDefault();
   const k = commitOther(); if (k) { $('#dm-type').value = k; $('#dm-other').value = ''; paintOther(); }
@@ -1820,13 +1843,20 @@ addEventListener('resize', () => { collapsed = !isDesk(); applySide(); });
 
 /* ---------- Settings page ---------- */
 const APP_VER = 'v1.0';
-const BK_KEYS = ['acct', 'emps', 'sched', 'logs', 'deds', 'dedTypes', 'pay', 'paysnap', 'cfg', 'theme', 'remember'];
+const BK_KEYS = ['acct', 'emps', 'sched', 'logs', 'deds', 'dedTypes', 'dedCfg', 'pay', 'paysnap', 'cfg', 'theme', 'remember'];
 function storageUsed() { let n = 0; BK_KEYS.forEach(k => n += (localStorage.getItem(k) || '').length); return n; }
-function paintDedManager() { // custom types only; the built-in ones are fixed
+function paintDedManager() { // one row per type (built-in and custom): on/off, rename, default amount, remove
   const w = $('#set-dedlist'); if (!w) return;
-  w.innerHTML = DED_CUSTOM.length
-    ? DED_CUSTOM.map(c => `<li class="flex items-center justify-between gap-2 py-1.5 border-b hair last:border-0"><span>${esc(c.label)}</span><button type="button" class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-dedrm="${esc(c.k)}">Remove</button></li>`).join('')
-    : '<li class="muted text-sm py-1">No custom types yet. Add one here, or via “Other” when creating a deduction.</li>';
+  const row = k => {
+    const label = DED_TYPES[k] || 'Other', on = dedOn(k), amt = dedAmtOf(k), custom = DED_CUSTOM.some(c => c.k === k);
+    return `<li class="flex flex-wrap items-center gap-2 py-2 border-b hair${on ? '' : ' is-off'}">
+      <label class="flex items-center gap-2 text-sm shrink-0" title="Switch off to hide this type from the Deductions filter and the drop-downs"><input type="checkbox" data-deon="${esc(k)}" ${on ? 'checked' : ''} aria-label="Show ${esc(label)} in Deductions"><span class="muted">On</span></label>
+      <input class="input flex-1 min-w-[11rem]" data-dename="${esc(k)}" value="${esc(label)}" maxlength="30" aria-label="Name of ${esc(label)}">
+      <div class="relative shrink-0" style="width:7.5rem"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input type="number" min="0" step="0.01" class="input pl-8" data-deamt="${esc(k)}" value="${amt || ''}" placeholder="Default" aria-label="Default amount for ${esc(label)}"></div>
+      ${custom ? `<button type="button" class="ghost !py-1 !px-2 text-xs shrink-0" style="color:var(--err)" data-dedrm="${esc(k)}">Remove</button>` : '<span class="muted text-xs shrink-0">Built-in</span>'}
+    </li>`;
+  };
+  w.innerHTML = allTypes().map(row).join('');
 }
 function renderSettings() {
   if (!$('#set-biz')) return; // page markup not present
@@ -1898,13 +1928,40 @@ setBump('#set-ded', 'submit', e => { // add a custom deduction type (same store 
   const k = 'c' + Date.now().toString(36); DED_CUSTOM.push({ k, label: name }); DED_TYPES[k] = name; DED_BADGE[k] = 'b-muted';
   store.set('dedTypes', DED_CUSTOM); refreshDedTypes(k); $('#set-ded-name').value = ''; paintDedManager(); toast('Deduction type added.');
 });
+function renameDedType(k, input) { // validates, saves and pushes the new name into the drop-downs and the tables
+  const name = input.value.trim().replace(/\s+/g, ' '), low = name.toLowerCase(), prev = DED_TYPES[k] || 'Other';
+  if (!name || name === prev) { input.value = prev; return; } // nothing to do (and no toast for a plain blur)
+  if (low === 'other') { toast('Use a specific name instead of “Other”.', 'err'); input.value = prev; return; }
+  if (Object.entries(DED_TYPES).some(([kk, v]) => kk !== k && String(v).toLowerCase() === low)) { toast('That deduction type already exists.', 'err'); input.value = prev; return; }
+  DED_CFG[k] = { ...DED_CFG[k], label: name }; DED_TYPES[k] = name; saveDedCfg();
+  refreshDedTypes(); renderDeductions(); // the list is left alone, so the name is not re-rendered under the cursor
+  toast('Type renamed.');
+}
+setBump('#set-dedlist', 'change', e => { // on/off, rename and default amount, edited straight in the row
+  const t = e.target;
+  if (t.dataset.deon != null) {
+    const k = t.dataset.deon;
+    if (!t.checked && enabledTypes().length <= 1) { t.checked = true; toast('Keep at least one deduction type on.', 'err'); return; }
+    DED_CFG[k] = { ...DED_CFG[k], on: t.checked }; saveDedCfg(); t.closest('li').classList.toggle('is-off', !t.checked);
+    refreshDedTypes(); renderDeductions();
+    toast(t.checked ? `${DED_TYPES[k]} is available again.` : `${DED_TYPES[k]} is hidden from the filter and the drop-downs.`);
+    return;
+  }
+  if (t.dataset.dename != null) { renameDedType(t.dataset.dename, t); return; }
+  if (t.dataset.deamt != null) {
+    const k = t.dataset.deamt, v = Math.max(0, Math.round((parseFloat(t.value) || 0) * 100) / 100);
+    DED_CFG[k] = { ...DED_CFG[k], amt: v }; saveDedCfg(); t.value = v || '';
+    toast(v ? `Default amount for ${DED_TYPES[k]} set to ${peso(v)}.` : `Default amount for ${DED_TYPES[k]} cleared.`);
+  }
+});
 setBump('#set-dedlist', 'click', e => {
   const b = e.target.closest('[data-dedrm]'); if (!b) return;
-  const k = b.dataset.dedrm, c = DED_CUSTOM.find(x => x.k === k);
-  confirmCard({ title: 'Remove deduction type?', msg: `Remove “${c ? c.label : k}” from the list? Existing records that use it will show as “Other”.`, ok: 'Remove', tone: 'danger' }).then(ok => {
+  const k = b.dataset.dedrm, label = DED_TYPES[k] || DED_CUSTOM.find(x => x.k === k)?.label || k;
+  confirmCard({ title: 'Remove deduction type?', msg: `Remove “${label}” from the list? Existing records that use it will show as “Other”.`, ok: 'Remove', tone: 'danger' }).then(ok => {
     if (!ok) return;
     const i = DED_CUSTOM.findIndex(x => x.k === k); if (i >= 0) DED_CUSTOM.splice(i, 1);
-    delete DED_TYPES[k]; delete DED_BADGE[k]; store.set('dedTypes', DED_CUSTOM); refreshDedTypes(); paintDedManager(); toast('Deduction type removed.');
+    delete DED_TYPES[k]; delete DED_BADGE[k]; delete DED_CFG[k]; saveDedCfg(); // drop its on/off, rename and default amount too
+    store.set('dedTypes', DED_CUSTOM); refreshDedTypes(); paintDedManager(); toast('Deduction type removed.');
   });
 });
 setBump('#set-export', 'click', () => { // backup every local key as a single JSON file

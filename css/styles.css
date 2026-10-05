@@ -231,3 +231,6 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
 .schedule-dot.scheduled { color: var(--scheduled); }
 .schedule-dot.dayoff { color: var(--dayoff); }
 .schedule-dot.nosched { color: var(--muted); }
+/* Settings › Deduction types: a type switched off stays visible (so it can be turned back on) but is dimmed */
+#set-dedlist li.is-off { opacity: .6; }
+#set-dedlist li:last-child { border-bottom: 0; } /* vendored Tailwind has no last:border-0 */

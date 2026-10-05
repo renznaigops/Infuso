@@ -498,14 +498,15 @@
       </div>
 
       <div class="grid lg:grid-cols-2 gap-4 mt-4">
-        <div class="card p-5">
+        <div class="card p-5 lg:col-span-2">
           <h2 class="font-medium">Deduction types</h2>
-          <p class="muted text-xs mt-1">Custom types added here or from Deductions. The built-in types can’t be removed.</p>
+          <p class="muted text-xs mt-1">Customize every type the owner can use. Switch a type off to hide it from the Deductions filter and the Add deduction drop-down, rename it, or give it a default amount that pre-fills when that type is picked. Built-in types can’t be removed.</p>
           <ul id="set-dedlist" class="text-sm mt-3"></ul>
           <form id="set-ded" class="flex gap-2 mt-4" autocomplete="off">
-            <input id="set-ded-name" class="input" maxlength="30" placeholder="e.g. Meal allowance recovery">
+            <input id="set-ded-name" class="input flex-1" maxlength="30" placeholder="e.g. Meal allowance recovery" aria-label="New deduction type name">
             <button class="btn shrink-0" type="submit">Add type</button>
           </form>
+          <p class="muted text-xs mt-2">Types added here are saved on this device and show up straight away in Deductions.</p>
         </div>
 
         <div class="card p-5">
