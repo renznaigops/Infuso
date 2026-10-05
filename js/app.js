@@ -85,16 +85,18 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 /* ---------- Schedules: data (per-day overrides; everything else follows the default shift) ---------- */
 const SHIFT_TYPES = { morning: { label: 'Morning', in: 480, out: 1020 }, afternoon: { label: 'Afternoon', in: 600, out: 1140 }, night: { label: 'Night', in: 900, out: 1440 } };
 const TYPE_BY_SHIFT = ['morning', 'afternoon', 'night'];
-const TYPE_LABEL = { morning: 'Morning', afternoon: 'Afternoon', night: 'Night', off: 'Day off', leave: 'On leave' };
+const TYPE_LABEL = { morning: 'Morning', afternoon: 'Afternoon', night: 'Night', off: 'Day off', leave: 'On leave', none: 'No schedule' };
 const SCH = store.get('sched', {}); // { 'YYYY-MM-DD': { 'STF-001': { t, in, out } } }
 const saveSch = () => store.set('sched', SCH);
 const dkey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function getSched(id, d) {
-  const o = SCH[dkey(d)]?.[id]; if (o) return o.t === 'leave' ? { t: 'off' } : o; // the only statuses are Scheduled and Day off
+  const o = SCH[dkey(d)]?.[id]; if (o) return o.t === 'leave' ? { t: 'off' } : o; // the statuses are Scheduled, Day off and No schedule
   return defSched(id, d);
 }
 function defSched(id, d) { // the staff's default pattern, used when a day has no edit
-  const wd = (d.getDay() + 6) % 7; // Mon = 0
+  const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  if (d >= t0) return { t: 'none' }; // the owner sets shifts by hand: today and later default to No schedule for every staff
+  const wd = (d.getDay() + 6) % 7; // Mon = 0 — past days keep the old pattern, so locked history and payroll snapshots stay valid
   if (wd === (+id.slice(4) - 1) % 7) return { t: 'off' }; // default: one weekly day off, staggered
   const t = TYPE_BY_SHIFT[EMP[id].shift] || 'morning', p = SHIFT_TYPES[t];
   return { t, in: p.in, out: p.out };
@@ -113,14 +115,11 @@ function isLateNow(id, ts = Date.now()) { // minutes late past scheduled start (
 const fmtMin = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}:${String(mm).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
 const fmtShort = m => { const h = Math.floor(m / 60) % 24, mm = m % 60; return `${h % 12 || 12}${mm ? ':' + String(mm).padStart(2, '0') : ''} ${h >= 12 ? 'PM' : 'AM'}`; };
 const schedText = id => { const s = getSched(id, new Date()); return s.in != null ? `${fmtMin(s.in)} – ${fmtMin(s.out)}` : TYPE_LABEL[s.t] + ' today'; };
-const HIST = [[12, 2, 1], [13, 1, 1], [11, 3, 1], [13, 2, 0], [10, 2, 3], [12, 1, 2]]; // previous 6 days: [on time, late, absent]
-const OFFSETS = [-10, -5, 0, 3, -2, 20, -8, 5, -1, 25, 2]; // minutes vs shift start; first 11 staff are already in today
-function seedLogs() {
-  const day = new Date(); day.setHours(0, 0, 0, 0);
-  return activeIds().filter(id => { const s = getSched(id, day); return s.in != null && s.t !== 'night'; }).slice(0, OFFSETS.length)
-    .map((id, i) => ({ id, name: EMP[id].name, type: 'in', ts: day.getTime() + (getSched(id, day).in + OFFSETS[i]) * 60000 }));
+// Automatic attendance distribution is removed — attendance starts blank and is submitted by the owner/staff
+if (!store.get('attBlankV2', false)) {
+  store.set('logs', []);
+  store.set('attBlankV2', true);
 }
-if (store.get('seedDay', '') !== new Date().toDateString()) { store.set('logs', seedLogs()); store.set('seedDay', new Date().toDateString()); }
 
 /* ---------- UI helpers ---------- */
 function toast(msg, type = 'ok') {
@@ -343,8 +342,8 @@ function handleCode(code) {
   if (!EMP[code]) { toast('Unrecognized staff ID.', 'err'); return; }
   if (EMP[code].draft) { toast(EMP[code].name + '’s setup isn’t complete yet. Ask your manager.', 'err'); return; }
   if (!EMP[code].active) { toast(EMP[code].name + ' is inactive.', 'err'); return; }
-  const sc = getSched(code, new Date()); // no shift today (day off / leave): block time in, but still allow time out for someone already clocked in
-  if (CFG.blockUnsched && sc.in == null && nextType(code) === 'in') { toast(`${EMP[code].name} isn’t scheduled today (${TYPE_LABEL[sc.t]}). Ask your manager to update the schedule.`, 'err'); return; }
+  const sc = getSched(code, new Date()); // no shift today (day off / no schedule): block time in, but still allow time out for someone already clocked in
+  if (CFG.blockUnsched && sc.in == null && nextType(code) === 'in') { toast(`${EMP[code].name} ${sc.t === 'none' ? 'has no schedule today' : `isn’t scheduled today (${TYPE_LABEL[sc.t]})`}. Ask your manager to update the schedule.`, 'err'); return; }
   const today = new Date().toDateString(); // max 4 scans a day: time in, break out, break in, time out
   if (logs().filter(x => x.id === code && new Date(x.ts).toDateString() === today).length >= 4) { toast(EMP[code].name + ' has already completed all 4 scans today.', 'err'); return; }
   pending = code; go('verify');
@@ -417,16 +416,26 @@ function renderDash() {
     return d.getHours() * 60 + d.getMinutes() > startOf(id) + GRACE; // 15-min grace after scheduled start
   }).length;
   const total = activeIds().length;
-  const absent = activeIds().filter(id => startOf(id) < 1e8 && !present.includes(id)).length;
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const absent = activeIds().filter(id => startOf(id) < 1e8 && !present.includes(id) && nowMin >= startOf(id)).length;
   renderChart([present.length - late, late, absent]);
   $('#stats').innerHTML = [['Active staff', total], ['Present today', present.length], ['Absent today', absent], ['Late today', late]]
     .map(([l, n]) => `<div class="card p-4"><div class="text-2xl font-semibold">${n}</div><div class="muted text-sm mt-1">${l}</div></div>`).join('');
-  const BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], off: ['b-muted', 'Day off'] };
+  const BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], upcoming: ['b-muted', 'Upcoming'], off: ['b-muted', 'Day off'], none: ['b-muted', 'No schedule'] };
   $('#rows').innerHTML = Object.entries(EMP).filter(([, e]) => e.active).map(([id, e]) => {
-    const f = t.find(x => x.id === id && x.type === 'in'); // first time in today
-    const outL = t.filter(x => x.id === id)[3]; // 4th scan of the day = time out (in, break out, break in, out)
-    const d = f && new Date(f.ts);
-    const st = !f ? (startOf(id) > 1e8 ? 'off' : 'absent') : d.getHours() * 60 + d.getMinutes() > startOf(id) + GRACE ? 'late' : 'present';
+    const uLogs = t.filter(x => x.id === id);
+    const f = uLogs.find(x => x.type === 'in' || x.slot === 0);
+    const outL = uLogs.find(x => x.slot === 3) || (uLogs.length >= 4 ? uLogs[3] : (uLogs.length === 2 && uLogs[1].type === 'out' ? uLogs[1] : null));
+    const sc = getSched(id, new Date());
+    let st = 'absent';
+    if (!f) {
+      if (sc.in == null) st = sc.t === 'none' ? 'none' : 'off';
+      else if (nowMin < sc.in) st = 'upcoming';
+      else st = 'absent';
+    } else {
+      const d = new Date(f.ts);
+      st = sc.in != null && d.getHours() * 60 + d.getMinutes() > sc.in + GRACE ? 'late' : 'present'; // no schedule today: an unscheduled clock-in counts as present, not late
+    }
     return `<tr class="border-t hair"><td class="py-2">${id}</td><td>${esc(e.name)}</td><td>${f ? fmtTime(f.ts) : '—'}</td><td>${outL ? fmtTime(outL.ts) : '—'}</td><td><span class="badge ${BADGE[st][0]}">${BADGE[st][1]}</span></td></tr>`;
   }).join('');
   $('#stat-late').textContent = late;
@@ -473,10 +482,30 @@ function riseBars(bars) {
   requestAnimationFrame(frame);
 }
 
+function getDayStats(d) {
+  const staff = Object.entries(EMP).filter(([, e]) => e.active && !e.draft);
+  let p = 0, l = 0, a = 0;
+  staff.forEach(([id, e]) => {
+    if (d < new Date(e.hired + 'T00:00')) return;
+    const r = attRecord(id, d);
+    if (r.s.in == null) return;
+    if (r.st === 'present') p++;
+    else if (r.st === 'late') l++;
+    else if (r.st === 'absent') a++;
+  });
+  return [p, l, a];
+}
+
 /* ---------- Chart: last 7 days, stacked bars (inline SVG, no library) ---------- */
 function renderChart(todayData) {
-  const total = Math.max(15, activeIds().length), data = [...HIST, todayData], days = [];
-  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(d.toLocaleDateString('en-US', { weekday: 'short' })); }
+  const total = Math.max(15, activeIds().length), data = [], days = [];
+  for (let i = 6; i >= 1; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+    days.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
+    data.push(getDayStats(d));
+  }
+  days.push(new Date().toLocaleDateString('en-US', { weekday: 'short' }));
+  data.push(todayData);
   const W = 420, H = 190, pl = 28, pb = 24, pt = 8, bw = 42, gap = (W - pl - 7 * bw) / 7, sy = v => (H - pb - pt) * v / total;
   let s = '<defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></linearGradient></defs>'; // each bar fades toward the baseline
   Array.from({ length: Math.floor(total / 5) + 1 }, (_, k) => k * 5).forEach(v => { const y = H - pb - sy(v); s += `<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${pl - 6}" y="${y + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}</text>`; });
@@ -501,7 +530,7 @@ async function resetDemo() {
   Object.keys(SCH).forEach(k => delete SCH[k]); saveSch();
   Object.keys(EMP).forEach(k => delete EMP[k]); Object.assign(EMP, defaultEmps()); saveEmps();
   resetPay(); pSel.clear(); hSel = null;
-  store.set('logs', seedLogs()); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset.');
+  store.set('logs', []); resetDedTypes(); DED.length = 0; DED.push(...seedDeds()); saveDed(); route(); toast('Demo data reset. Attendance is left blank.');
 }
 $('#reset').addEventListener('click', resetDemo);
 
@@ -767,7 +796,8 @@ function renderSchedule() {
     <div class="leading-tight"><div class="font-medium">${esc(e.name)}</div><div class="muted text-xs">${esc(e.pos)}</div></div></div></td>` + days.map(d => {
     const s = getSched(id, d), past = d < t0;
     if (d < new Date(e.hired + 'T00:00')) return '<td class="p-0 align-top min-w-[112px]"><div class="sc muted" style="background:transparent;border-left-color:transparent">Not yet hired</div></td>';
-    return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${s.in != null ? 'work' : 'off'}${past ? ' sc-lock' : ''}" ${past ? 'disabled title="Past schedules can’t be edited"' : ''} data-id="${id}" data-d="${dkey(d)}"><b>${s.in != null ? 'Scheduled' : 'Day off'}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
+    const kind = s.in != null ? 'work' : s.t === 'none' ? 'none' : 'off'; // Scheduled / No schedule / Day off
+    return `<td class="p-0 align-top min-w-[112px]"><button type="button" class="sc sc-${kind}${past ? ' sc-lock' : ''}" ${past ? 'disabled title="Past schedules can’t be edited"' : ''} data-id="${id}" data-d="${dkey(d)}"><b>${s.in != null ? 'Scheduled' : TYPE_LABEL[s.t] || 'Day off'}</b>${s.in != null ? `<span class="muted">${fmtShort(s.in)} – ${fmtShort(s.out)}</span>` : ''}</button></td>`;
   }).join('') + '</tr>').join('') : '<tr><td colspan="8" class="py-8 text-center muted">No staff match your filters.</td></tr>';
 }
 $('#s-prev').addEventListener('click', () => { wk = addDays(wk, -7); renderSchedule(); });
@@ -785,7 +815,7 @@ function openSch(id, key) {
   $('#s-info').innerHTML = [['Staff', esc(e.name)], ['Date', d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })]]
     .map(([k, v]) => `<div class="flex justify-between"><dt class="muted">${k}</dt><dd>${v}</dd></div>`).join('');
   const p = SHIFT_TYPES[TYPE_BY_SHIFT[e.shift] || 'morning']; // default times come from the staff's default shift
-  $('#s-status').value = s.in != null ? 'work' : 'off';
+  $('#s-status').value = s.in != null ? 'work' : s.t === 'none' ? 'none' : 'off';
   $('#s-in').value = toTime(s.in ?? p.in); $('#s-out').value = toTime(s.out ?? p.out);
   paintWork(); sModal.classList.remove('hidden'); sModal.classList.add('flex');
 }
@@ -798,7 +828,7 @@ $('#s-form').addEventListener('submit', e => {
   e.preventDefault();
   const st = $('#s-status').value; let v;
   if (sEdit.key < dkey(new Date())) { toast('Past schedules can’t be edited.', 'err'); return; }
-  if (st === 'off' && sEdit.key === dkey(new Date()) && logs().some(x => x.id === sEdit.id && dkey(new Date(x.ts)) === sEdit.key)) { toast(`${EMP[sEdit.id].name} already scanned in today, so today can’t be set as a day off.`, 'err'); return; }
+  if ((st === 'off' || st === 'none') && sEdit.key === dkey(new Date()) && logs().some(x => x.id === sEdit.id && dkey(new Date(x.ts)) === sEdit.key)) { toast(`${EMP[sEdit.id].name} already scanned in today, so today can’t be set to ${st === 'none' ? 'No schedule' : 'a day off'}.`, 'err'); return; }
   if (st === 'work') {
     if (!$('#s-in').value || !$('#s-out').value) { toast('Enter the time in and time out.', 'err'); return; }
     const i = toMin($('#s-in').value); let o = toMin($('#s-out').value); if (o <= i) o += 1440; // ends after midnight
@@ -813,32 +843,60 @@ let aMode = 'today'; // one table holds every staff row — the box scrolls, the
 const hsh = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 const fmtHM = m => { m = Math.max(0, Math.round(m)); const h = Math.floor(m / 60), mm = m % 60; return h ? `${h}h${mm ? ' ' + String(mm).padStart(2, '0') + 'm' : ''}` : mm ? mm + 'm' : '0h'; };
 const schedShort = s => `${fmtShort(s.in).replace(' ', '')}–${fmtShort(s.out).replace(' ', '')}`;
-const ATT_BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], upcoming: ['b-muted', 'Upcoming'], off: ['b-muted', 'Day off'], leave: ['b-muted', 'On leave'] };
+const ATT_BADGE = { present: ['b-ok', 'Present'], late: ['b-warn', 'Late'], absent: ['b-err', 'Absent'], upcoming: ['b-muted', 'Upcoming'], off: ['b-muted', 'Day off'], leave: ['b-muted', 'On leave'], none: ['b-muted', 'No schedule'] };
 const minOf = t => { const q = new Date(t); return q.getHours() * 60 + q.getMinutes(); };
 
 function attRecord(id, d) { // up to 4 scans a day: time in, break out, break in, time out
   const key = dkey(d), s = getSched(id, d), isToday = key === dkey(new Date()), now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
-  const r = { id, e: EMP[id], d, s, t: [], tin: null, tout: null, running: false, onBreak: false, hrs: 0 };
-  if (s.in == null) return { ...r, st: s.t };
-  if (isToday) {
-    const day = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key).slice(0, 4);
-    r.t = day.map(x => minOf(x.ts));
+  const r = { id, e: EMP[id], d, s, t: [null, null, null, null], tin: null, tout: null, running: false, onBreak: false, hrs: 0 };
+  if (s.in == null) return { ...r, st: s.t, t: [] };
+
+  const day = logs().filter(x => x.id === id && dkey(new Date(x.ts)) === key);
+  if (!day.length) {
+    return { ...r, t: [], st: isToday && nowMin < s.in ? 'upcoming' : 'absent' };
   }
-  else if (hsh(id + key) % 100 >= 7) { // demo history: deterministic, so the same day always shows the same record
-    const tin = s.in + (hsh(key + id) % 35) - 12, tout = s.out + (hsh(id + 'o' + key) % 30) - 12;
-    const bo = Math.round((s.in + s.out) / 2) + (hsh(id + 'b' + key) % 21) - 10, bi = bo + 50 + (hsh(key + 'i' + id) % 21); // break of 50–70 min around mid-shift
-    r.t = [tin, bo, bi, tout];
+
+  // Check if logs have explicit slots (from owner submission) or are sequential (from scanner)
+  const hasSlots = day.some(x => x.slot != null);
+  if (hasSlots) {
+    day.forEach(x => { if (x.slot != null && x.slot >= 0 && x.slot <= 3) r.t[x.slot] = minOf(x.ts); });
+  } else {
+    const sorted = [...day].sort((a, b) => a.ts - b.ts).slice(0, 4);
+    if (sorted.length === 2 && sorted[0].type === 'in' && sorted[1].type === 'out' && (!isToday || minOf(sorted[1].ts) > s.in + 120)) {
+      r.t[0] = minOf(sorted[0].ts);
+      r.t[3] = minOf(sorted[1].ts);
+    } else {
+      sorted.forEach((x, i) => { r.t[i] = minOf(x.ts); });
+    }
   }
-  if (!r.t.length) return { ...r, st: isToday && nowMin < s.in ? 'upcoming' : 'absent' };
-  for (let i = 1; i < r.t.length; i++) if (r.t[i] < r.t[i - 1]) r.t[i] += 1440; // scan after midnight
-  const n = r.t.length;
-  r.tin = r.t[0]; r.tout = n >= 4 ? r.t[3] : null; // final time out only counts once all 4 scans are in (2 scans = on break, not gone home)
-  r.running = isToday && n % 2 === 1; r.onBreak = isToday && n === 2;
-  for (let i = 0; i < n; i += 2) { // hours worked = time in → time out for each half, so the break is excluded
-    const st = r.t[i]; let en = r.t[i + 1];
-    if (en == null) { en = nowMin; if (en < st) en += 1440; }
-    r.hrs += Math.max(0, en - st);
+
+  r.tin = r.t[0];
+  r.tout = r.t[3] ?? (r.t[1] != null && r.t[2] == null && !isToday ? r.t[1] : null);
+
+  const scannedCount = r.t.filter(x => x != null).length;
+  if (!scannedCount) return { ...r, t: [], st: isToday && nowMin < s.in ? 'upcoming' : 'absent' };
+
+  r.running = isToday && r.tin != null && r.tout == null && r.t[1] == null;
+  r.onBreak = isToday && r.t[1] != null && r.t[2] == null;
+
+  if (r.tin != null) {
+    if (r.t[1] != null && r.t[2] != null && r.t[3] != null) {
+      const h1 = Math.max(0, r.t[1] - r.tin);
+      const h2 = Math.max(0, r.t[3] - r.t[2]);
+      r.hrs = h1 + h2;
+    } else if (r.t[3] != null) {
+      let diff = r.t[3] - r.tin;
+      if (diff < 0) diff += 1440;
+      r.hrs = Math.max(0, diff);
+    } else if (r.t[1] != null && r.t[2] == null) {
+      r.hrs = Math.max(0, r.t[1] - r.tin);
+    } else if (isToday) {
+      let en = nowMin;
+      if (en < r.tin) en += 1440;
+      r.hrs = Math.max(0, en - r.tin);
+    }
   }
+
   r.st = r.tin > s.in + GRACE ? 'late' : 'present';
   return r;
 }
@@ -846,7 +904,7 @@ function attDates() {
   const t = new Date(); t.setHours(0, 0, 0, 0);
   return aMode === 'date' && $('#a-date').value ? [new Date($('#a-date').value + 'T00:00')] : [t];
 }
-const A_COLS = [['ID'], ['Staff'], ['Scheduled'], ['Time In', 'Shift start'], ['Time Out', 'Break start'], ['Time In', 'Break end'], ['Time Out', 'Shift end'], ['Hours Worked'], ['Status']];
+const A_COLS = [['ID'], ['Staff'], ['Scheduled'], ['Time In', 'Shift start'], ['Time Out', 'Break start'], ['Time In', 'Break end'], ['Time Out', 'Shift end'], ['Hours Worked'], ['Status'], ['Actions']];
 $('#a-pos').innerHTML = '<option value="">All Positions</option>' + POSITIONS.map(p => `<option value="${p}">${p}</option>`).join(''); // only Kitchen Staff and Dine Staff
 function renderAttendance() {
   const todayK = dkey(new Date());
@@ -863,18 +921,169 @@ function renderAttendance() {
   $('#a-head').innerHTML = A_COLS.map(([h, t]) => `<th class="py-2 font-normal pr-3"${t ? ` title="${t}"` : ''}>${h}</th>`).join('');
   $('#a-rows').innerHTML = recs.length ? recs.map(r => {
     const w = r.s.in != null, b = ATT_BADGE[r.st], live = r.running || r.onBreak;
+    const hasData = r.t.some(x => x != null);
     return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${r.id}</td>
     <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${r.e.photo ? `<img class="avatar" src="${r.e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(r.e.name)}</span>`}<div class="leading-tight"><div>${esc(r.e.name)}</div><div class="muted text-xs">${esc(r.e.pos)}</div></div></div></td>
     <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}${schedChanged(r.id, r.d) ? '<div class="text-xs" style="color:var(--warn)" title="This day’s schedule was edited. Status and hours follow the updated schedule.">Schedule updated</div>' : ''}</td>
     ${[0, 1, 2, 3].map(i => `<td class="pr-3 whitespace-nowrap">${r.t[i] != null ? fmtMin(r.t[i]) : '—'}</td>`).join('')}
-    <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${r.t.length ? fmtHM(r.hrs) : '—'}</td>
-    <td><span class="badge ${b[0]}">${b[1]}</span></td></tr>`;
-  }).join('') : `<tr class="border-t hair"><td colspan="9" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
+    <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${hasData ? fmtHM(r.hrs) : '—'}</td>
+    <td class="pr-3"><span class="badge ${b[0]}">${b[1]}</span></td>
+    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-att-edit="${r.id}" data-d="${dkey(r.d)}">${hasData ? 'Edit' : 'Record'}</button></td></tr>`;
+  }).join('') : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
   $('#a-count').textContent = recs.length ? `Showing all ${recs.length} record${recs.length === 1 ? '' : 's'}` : 'Showing 0 records';
 }
 $('#a-modes').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { aMode = b.dataset.mode; renderAttendance(); } });
 $('#a-date').addEventListener('change', e => { aMode = e.target.value ? 'date' : 'today'; renderAttendance(); });
 ['#a-q', '#a-pos', '#a-st'].forEach(s => $(s).addEventListener('input', () => renderAttendance()));
+
+/* ---------- Owner Attendance Submission Modal ---------- */
+const attModal = $('#att-modal');
+const minToTimeInput = m => {
+  if (m == null) return '';
+  const h = Math.floor(m / 60) % 24, mm = m % 60;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+const toTimestamp = (dStr, timeStr) => {
+  if (!timeStr) return null;
+  const [h, m] = timeStr.split(':').map(Number);
+  const dt = new Date(dStr + 'T00:00:00');
+  dt.setHours(h, m, 0, 0);
+  return dt.getTime();
+};
+
+function openAttModal(id = null, dateKey = null) {
+  const active = Object.keys(EMP).filter(k => EMP[k].active && !EMP[k].draft);
+  if (!active.length) { toast('No active staff available.', 'err'); return; }
+  const curDate = dateKey || ($('#a-date').value || dkey(new Date()));
+  const selId = (id && EMP[id]) ? id : active[0];
+
+  $('#am-emp').innerHTML = active.map(k => `<option value="${k}">${esc(EMP[k].name)} (${k})</option>`).join('');
+  $('#am-emp').value = selId;
+  $('#am-date').value = curDate;
+  $('#am-date').max = dkey(new Date());
+
+  populateAttForm();
+  attModal.classList.remove('hidden');
+  attModal.classList.add('flex');
+}
+
+function closeAttModal() {
+  attModal.classList.add('hidden');
+  attModal.classList.remove('flex');
+}
+
+function populateAttForm() {
+  const staffId = $('#am-emp').value;
+  const dateKey = $('#am-date').value;
+  if (!staffId || !dateKey) return;
+
+  const dt = new Date(dateKey + 'T00:00');
+  const sc = getSched(staffId, dt);
+  const schedStr = sc.in != null ? `${fmtMin(sc.in)} – ${fmtMin(sc.out)} (${TYPE_LABEL[sc.t] || 'Regular'})` : (TYPE_LABEL[sc.t] || 'Day off');
+  $('#am-sched').textContent = schedStr;
+  $('#am-sched').style.color = sc.in != null ? 'var(--text)' : 'var(--muted)';
+
+  const r = attRecord(staffId, dt);
+  const hasExisting = r.t.some(x => x != null);
+
+  $('#am-title').textContent = hasExisting ? 'Edit attendance' : 'Record attendance';
+  $('#am-del').classList.toggle('hidden', !hasExisting);
+
+  if (hasExisting) {
+    $('#am-in').value = minToTimeInput(r.t[0]);
+    $('#am-bo').value = minToTimeInput(r.t[1]);
+    $('#am-bi').value = minToTimeInput(r.t[2]);
+    $('#am-out').value = minToTimeInput(r.t[3]);
+    if (r.t[1] != null || r.t[2] != null) {
+      $('#am-break-fields').classList.remove('hidden');
+      $('#am-break-toggle').textContent = '– Hide break times';
+    } else {
+      $('#am-break-fields').classList.add('hidden');
+      $('#am-break-toggle').textContent = '+ Add break times (optional)';
+    }
+  } else {
+    $('#am-in').value = '';
+    $('#am-bo').value = '';
+    $('#am-bi').value = '';
+    $('#am-out').value = '';
+    $('#am-break-fields').classList.add('hidden');
+    $('#am-break-toggle').textContent = '+ Add break times (optional)';
+  }
+}
+
+$('#am-emp').addEventListener('change', populateAttForm);
+$('#am-date').addEventListener('change', populateAttForm);
+
+$('#am-fill').addEventListener('click', () => {
+  const staffId = $('#am-emp').value;
+  const dateKey = $('#am-date').value;
+  const sc = getSched(staffId, new Date(dateKey + 'T00:00'));
+  if (sc.in == null) { toast(sc.t === 'none' ? `${EMP[staffId].name} has no schedule on this date.` : `${EMP[staffId].name} is scheduled as ${TYPE_LABEL[sc.t] || 'Day off'} on this date.`, 'err'); return; }
+  $('#am-in').value = minToTimeInput(sc.in);
+  $('#am-out').value = minToTimeInput(sc.out);
+});
+
+$('#am-break-toggle').addEventListener('click', () => {
+  const hidden = $('#am-break-fields').classList.toggle('hidden');
+  $('#am-break-toggle').textContent = hidden ? '+ Add break times (optional)' : '– Hide break times';
+});
+
+$('#am-x').addEventListener('click', closeAttModal);
+$('#am-cancel').addEventListener('click', closeAttModal);
+
+$('#am-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const staffId = $('#am-emp').value;
+  const dateKey = $('#am-date').value;
+  if (!staffId || !dateKey) return;
+  const tinVal = $('#am-in').value;
+  if (!tinVal) { toast('Please specify Time in.', 'err'); return; }
+
+  const emp = EMP[staffId];
+  const tinTs = toTimestamp(dateKey, tinVal);
+  const boTs = toTimestamp(dateKey, $('#am-bo').value);
+  const biTs = toTimestamp(dateKey, $('#am-bi').value);
+  const toutTs = toTimestamp(dateKey, $('#am-out').value);
+
+  const cleanLogs = logs().filter(x => !(x.id === staffId && dkey(new Date(x.ts)) === dateKey));
+  const newItems = [{ id: staffId, name: emp.name, type: 'in', ts: tinTs, slot: 0 }];
+  if (boTs) newItems.push({ id: staffId, name: emp.name, type: 'out', ts: boTs, slot: 1 });
+  if (biTs) newItems.push({ id: staffId, name: emp.name, type: 'in', ts: biTs, slot: 2 });
+  if (toutTs) newItems.push({ id: staffId, name: emp.name, type: 'out', ts: toutTs, slot: 3 });
+
+  store.set('logs', [...cleanLogs, ...newItems]);
+  closeAttModal();
+  toast(`Attendance recorded for ${emp.name}.`);
+  renderAttendance();
+  renderDash();
+});
+
+$('#am-del').addEventListener('click', async () => {
+  const staffId = $('#am-emp').value;
+  const dateKey = $('#am-date').value;
+  const emp = EMP[staffId];
+  const ok = await confirmCard({
+    title: 'Clear attendance?',
+    msg: `Clear attendance record for ${emp.name} on ${dateKey}?`,
+    ok: 'Clear record', tone: 'danger'
+  });
+  if (!ok) return;
+  const cleanLogs = logs().filter(x => !(x.id === staffId && dkey(new Date(x.ts)) === dateKey));
+  store.set('logs', cleanLogs);
+  closeAttModal();
+  toast(`Attendance cleared for ${emp.name}.`);
+  renderAttendance();
+  renderDash();
+});
+
+$('#add-att').addEventListener('click', () => openAttModal());
+$('#a-rows').addEventListener('click', e => {
+  const b = e.target.closest('[data-att-edit]');
+  if (b) openAttModal(b.dataset.attEdit, b.dataset.d);
+});
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && attModal && !attModal.classList.contains('hidden')) closeAttModal();
+});
 
 $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); toast('Coming soon in this prototype.'); }));
 
@@ -1280,6 +1489,13 @@ function rRows(starts) { // one row per staff; a single period is payRows() as i
   }));
   return [...map.values()].map(a => ({ ...a, st: a.sts.reduce((w, x) => R_STAGE.indexOf(x.st) < R_STAGE.indexOf(w) ? x.st : w, 'released') }));
 }
+function rRowHtml({ id, e, c, st, sts, lastK }, comb) {
+  return `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
+    <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
+    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap" title="${comb && sts.length > 1 ? esc(sts.map(x => `${fmR(new Date(x.k + 'T00:00'))}: ${PAY_ST[x.st][1]}`).join(' · ')) : ''}">${comb ? rN(sts.length) : fmR(new Date(lastK + 'T00:00'))}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
+    <td class="pr-3"><span class="badge ${PAY_ST[st][0]}"${comb && new Set(sts.map(x => x.st)).size > 1 ? ` title="Earliest stage across ${rN(sts.length)} — the approver still has work to do"` : ''}>${PAY_ST[st][1]}</span></td>
+    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}" data-k="${lastK}" ${comb ? 'title="Opens the most recent pay period in this range"' : ''}>${comb ? 'View latest' : 'View details'}</button></td></tr>`;
+}
 function renderReports() {
   const ks = payKeys(), sc = $('#r-scope').value, cp = $('#r-per').value, cm = $('#r-month').value, cy = $('#r-year').value;
   $('#r-per').innerHTML = ks.map(k => `<option value="${k}">${fmR(new Date(k + 'T00:00'))}${k === dkey(curStart()) ? ' (current)' : ''}</option>`).join('');
@@ -1310,11 +1526,7 @@ function renderReports() {
     .map(([l, v, n]) => `<div class="card p-4"><div class="muted text-sm">${l}</div><div class="text-2xl font-semibold mt-1">${v}</div><div class="muted text-xs mt-1">${n}</div></div>`).join('');
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE)); rPage = Math.min(rPage, pages);
   const at = (rPage - 1) * PER_PAGE, part = rows.slice(at, at + PER_PAGE), comb = sc !== 'period';
-  $('#r-rows').innerHTML = part.length ? part.map(({ id, e, c, st, sts, lastK }) => `<tr class="border-t hair"><td class="py-2.5 pr-3 whitespace-nowrap">${id}</td>
-    <td class="pr-3 whitespace-nowrap"><div class="flex items-center gap-2">${e.photo ? `<img class="avatar" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs" style="background:var(--bg)">${initials(e.name)}</span>`}${esc(e.name)}</div></td>
-    <td class="pr-3 whitespace-nowrap">${esc(e.pos)}</td><td class="pr-3 whitespace-nowrap" title="${comb && sts.length > 1 ? esc(sts.map(x => `${fmR(new Date(x.k + 'T00:00'))}: ${PAY_ST[x.st][1]}`).join(' · ')) : ''}">${comb ? rN(sts.length) : fmR(new Date(lastK + 'T00:00'))}</td><td class="pr-3 whitespace-nowrap">${fmtHM(c.mins)}</td><td class="pr-3">${num(c.gross)}</td><td class="pr-3">${num(c.ded)}</td><td class="pr-3 font-medium">${num(c.net)}</td>
-    <td class="pr-3"><span class="badge ${PAY_ST[st][0]}"${comb && new Set(sts.map(x => x.st)).size > 1 ? ` title="Earliest stage across ${rN(sts.length)} — the approver still has work to do"` : ''}>${PAY_ST[st][1]}</span></td>
-    <td class="whitespace-nowrap no-print"><button class="ghost !py-1 !px-2 text-xs" data-rv="${id}" data-k="${lastK}" ${comb ? 'title="Opens the most recent pay period in this range"' : ''}>${comb ? 'View latest' : 'View details'}</button></td></tr>`).join('')
+  $('#r-rows').innerHTML = part.length ? part.map(r => rRowHtml(r, comb)).join('')
     : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">${all.length ? 'No payroll records match your filters.' : comb ? `No payroll has been generated for ${esc(R.label.split(' · ')[0])} yet. Go to Payroll and generate the pay periods you need.` : 'No payroll has been generated for this period yet. Go to Payroll and click Generate payroll.'}</td></tr>`;
   $('#r-count').textContent = rows.length ? `Showing ${at + 1} to ${at + part.length} of ${rows.length} records` : 'Showing 0 records';
   $('#r-pager').innerHTML = dpager(rPage, pages);
@@ -1327,11 +1539,29 @@ $('#r-pager').addEventListener('click', e => { const b = e.target.closest('butto
 $('#r-rows').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; if (b.dataset.rv) openPay(b.dataset.rv, new Date(b.dataset.k + 'T00:00'), false, true); });
 $('#r-exp').addEventListener('click', e => { e.stopPropagation(); $('#r-menu').classList.toggle('hidden'); });
 addEventListener('click', () => $('#r-menu').classList.add('hidden'));
-addEventListener('afterprint', () => { document.body.classList.remove('print-report'); const st = document.getElementById('rpt-page'); if (st) st.remove(); }); // the landscape @page lives only for the reports export
+addEventListener('afterprint', () => {
+  if (document.body.classList.contains('print-report')) {
+    document.body.classList.remove('print-report');
+    const st = document.getElementById('rpt-page');
+    if (st) st.remove();
+    renderReports();
+  }
+});
 $('#r-menu').addEventListener('click', e => {
   const b = e.target.closest('[data-exp]'); if (!b) return;
+  $('#r-menu').classList.add('hidden');
   if (!rView.rows.length) { toast('There are no records to export.', 'err'); return; }
-  if (b.dataset.exp === 'pdf') { document.body.classList.add('print-report'); let st = document.getElementById('rpt-page'); if (!st) { st = document.createElement('style'); st.id = 'rpt-page'; document.head.appendChild(st); } st.textContent = '@page { size: landscape; margin: 10mm; }'; window.print(); return; } // rotate the sheet 90° (landscape) so the whole table fits
+  if (b.dataset.exp === 'pdf') {
+    document.body.classList.add('print-report');
+    let st = document.getElementById('rpt-page');
+    if (!st) { st = document.createElement('style'); st.id = 'rpt-page'; document.head.appendChild(st); }
+    st.textContent = '@page { size: landscape; margin: 10mm; }';
+    const comb = rView.scope !== 'period';
+    $('#r-rows').innerHTML = rView.rows.map(r => rRowHtml(r, comb)).join('');
+    $('#r-count').textContent = rView.rows.length ? `Showing all ${rView.rows.length} records` : 'Showing 0 records';
+    window.print();
+    return;
+  }
   const cell = v => { v = String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }; // quote fields; neutralize spreadsheet formulas
   const comb = rView.scope !== 'period'; // the file always mirrors the view on screen
   const head = ['Staff ID', 'Staff Name', 'Position', comb ? 'Pay Periods Covered' : 'Pay Period', 'Total Hours Worked', 'Gross Pay', 'Deductions', 'Net Pay', 'Status'];
@@ -1363,7 +1593,7 @@ function psData(id, s) { // one source for the payslip numbers, so the screen an
   c.ds.forEach(x => g[x.type] = (g[x.type] || 0) + x.amount);
   return { e, c, log, g, days: log.map(l => {
     const d = new Date(l.d + 'T00:00');
-    return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), day: d.toLocaleDateString('en-US', { weekday: 'short' }), tin: l.tin, tout: l.tout, hrs: l.hrs, lbl: { off: 'Day off', leave: 'On leave', absent: 'Absent' }[l.st] || '—' };
+    return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), day: d.toLocaleDateString('en-US', { weekday: 'short' }), tin: l.tin, tout: l.tout, hrs: l.hrs, lbl: { off: 'Day off', leave: 'On leave', absent: 'Absent', none: 'No schedule' }[l.st] || '—' };
   }) };
 }
 function psHtml(id, s, st) {

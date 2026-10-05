@@ -155,7 +155,7 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
 .sc:hover { background: color-mix(in srgb, var(--c) 22%, transparent); }
 .sc-lock { opacity: .6; cursor: not-allowed; }
 .sc-lock:hover { background: color-mix(in srgb, var(--c) 12%, transparent); }
-.sc-work, .sc-morning, .sc-afternoon, .sc-night { --c: var(--scheduled); } .sc-leave { --c: var(--ok); } .sc-off { --c: var(--dayoff); }
+.sc-work, .sc-morning, .sc-afternoon, .sc-night { --c: var(--scheduled); } .sc-leave { --c: var(--ok); } .sc-off { --c: var(--dayoff); } .sc-none { --c: var(--muted); }
 
 
 /* ID card (fixed light colors so printed cards look the same in dark mode) */
@@ -197,6 +197,9 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
   body.print-report #r-stats + .card { margin-top: .6rem; padding: .6rem .8rem; } /* the records card that follows the summary strip */
   body.print-report #page-reports th { padding-top: .25rem; padding-bottom: .25rem; }
   body.print-report #page-reports tbody td { padding-top: .35rem; padding-bottom: .35rem; }
+  body.print-report #page-reports table { width: 100% !important; border-collapse: collapse; }
+  body.print-report #page-reports thead { display: table-header-group; }
+  body.print-report #page-reports tr { break-inside: avoid; page-break-inside: avoid; }
 }
 
 /* Attendance: one scrollable table holds every staff row — keep the column header visible while it scrolls */
@@ -227,3 +230,4 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
 .schedule-dot { font-style: normal; }
 .schedule-dot.scheduled { color: var(--scheduled); }
 .schedule-dot.dayoff { color: var(--dayoff); }
+.schedule-dot.nosched { color: var(--muted); }

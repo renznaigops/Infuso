@@ -257,26 +257,29 @@
           <select id="s-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
         </div>
         <div class="flex flex-wrap gap-4 text-xs muted mt-4">
-          <span><i class="schedule-dot scheduled">●</i> Scheduled</span><span><i class="schedule-dot dayoff">●</i> Day off</span>
+          <span><i class="schedule-dot scheduled">●</i> Scheduled</span><span><i class="schedule-dot dayoff">●</i> Day off</span><span><i class="schedule-dot nosched">●</i> No schedule</span>
         </div>
         <div class="overflow-auto max-h-[32rem] mt-3">
           <table class="w-full text-sm min-w-[900px]" style="border-collapse:separate;border-spacing:6px">
             <thead id="s-head"></thead><tbody id="s-rows"></tbody>
           </table>
         </div>
-        <p class="muted text-xs mt-2">Click a day to set it as Scheduled or Day off. Past days are locked. Changes to today update Attendance right away. Only active staff appear here, and only from their date hired. Staff without an entry follow their default shift and one weekly day off.</p>
+        <p class="muted text-xs mt-2">Click a day to set it as Scheduled, Day off or No schedule. Past days are locked. Changes to today update Attendance right away. Only active staff appear here, and only from their date hired. Today and later default to No schedule until you set them; past days follow the old default shift and one weekly day off.</p>
       </div>
     </main>
     <!-- ATTENDANCE PAGE -->
     <main id="page-attendance" class="hidden flex-1 overflow-auto p-4 sm:p-6">
       <nav class="text-sm muted" aria-label="Breadcrumb"><a href="#/dashboard" class="underline">Home</a> / <span style="color:var(--text)">Attendance</span></nav>
-      <div class="mt-3"><h1 class="text-2xl font-semibold">Attendance Records</h1><p class="muted text-sm mt-1">View staff attendance records.</p></div>
+      <div class="flex flex-wrap items-start justify-between gap-3 mt-3">
+        <div><h1 class="text-2xl font-semibold">Attendance Records</h1><p class="muted text-sm mt-1">Manage and submit staff attendance records.</p></div>
+        <button id="add-att" class="btn">+ Record attendance</button>
+      </div>
       <div class="card p-4 mt-5">
         <div class="flex flex-wrap items-center gap-2">
           <div id="a-modes" class="flex gap-2"><button type="button" data-mode="today">Today</button></div>
           <input id="a-date" type="date" class="input w-full sm:!w-auto" aria-label="Pick a date">
           <select id="a-pos" class="input w-full sm:!w-44" aria-label="Filter by position"></select>
-          <select id="a-st" class="input w-full sm:!w-36" aria-label="Filter by status"><option value="">All Status</option><option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option><option value="off">Day off</option></select>
+          <select id="a-st" class="input w-full sm:!w-36" aria-label="Filter by status"><option value="">All Status</option><option value="present">Present</option><option value="late">Late</option><option value="absent">Absent</option><option value="off">Day off</option><option value="none">No schedule</option></select>
           <input id="a-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search attendance">
         </div>
         <p id="a-label" class="muted text-sm mt-4"></p>
@@ -633,11 +636,60 @@
   <form id="s-form" class="card w-full max-w-sm p-6 space-y-4" autocomplete="off">
     <div class="flex items-start justify-between gap-3"><h2 class="text-xl font-semibold">Edit schedule</h2><button type="button" id="s-x" class="ghost !px-3" aria-label="Close">✕</button></div>
     <dl id="s-info" class="text-sm space-y-1"></dl>
-    <div><label class="lbl" for="s-status">Status</label><select id="s-status" class="input"><option value="work">Scheduled</option><option value="off">Day off</option></select></div>
+    <div><label class="lbl" for="s-status">Status</label><select id="s-status" class="input"><option value="work">Scheduled</option><option value="off">Day off</option><option value="none">No schedule</option></select></div>
     <div id="s-work" class="space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label class="lbl" for="s-in">Time in</label><input id="s-in" type="time" class="input"></div><div><label class="lbl" for="s-out">Time out</label><input id="s-out" type="time" class="input"></div></div>
     </div>
     <div class="flex justify-end gap-2"><button type="button" id="s-cancel" class="ghost">Cancel</button><button class="btn" type="submit">Save changes</button></div>
+  </form>
+</div>
+
+<!-- RECORD / EDIT ATTENDANCE -->
+<div id="att-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/40">
+  <form id="am-form" class="card w-full max-w-md max-h-full overflow-auto p-6 space-y-4" autocomplete="off">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 id="am-title" class="text-xl font-semibold">Record attendance</h2>
+        <p class="muted text-sm mt-1">Submit attendance times for staff.</p>
+      </div>
+      <button type="button" id="am-x" class="ghost !px-3" aria-label="Close">✕</button>
+    </div>
+    <div>
+      <label class="lbl" for="am-emp">Staff *</label>
+      <select id="am-emp" class="input"></select>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
+        <label class="lbl" for="am-date">Date *</label>
+        <input id="am-date" type="date" class="input">
+      </div>
+      <div>
+        <label class="lbl">Schedule</label>
+        <div id="am-sched" class="text-sm py-2 px-1 muted">Regular shift</div>
+      </div>
+    </div>
+    <div class="flex justify-between items-center pt-1">
+      <span class="text-sm font-medium">Shift times</span>
+      <button type="button" id="am-fill" class="ghost !py-1 !px-2 text-xs">Use scheduled shift</button>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div><label class="lbl" for="am-in">Time in *</label><input id="am-in" type="time" class="input" required></div>
+      <div><label class="lbl" for="am-out">Time out</label><input id="am-out" type="time" class="input"></div>
+    </div>
+    <div>
+      <button type="button" id="am-break-toggle" class="ghost !py-1 !px-2 text-xs text-left">+ Add break times (optional)</button>
+      <div id="am-break-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 hidden">
+        <div><label class="lbl" for="am-bo">Break out</label><input id="am-bo" type="time" class="input"></div>
+        <div><label class="lbl" for="am-bi">Break in</label><input id="am-bi" type="time" class="input"></div>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t hair">
+      <button type="button" id="am-del" class="ghost hidden" style="color:var(--err)">Clear attendance</button>
+      <div class="flex gap-2 ml-auto">
+        <button type="button" id="am-cancel" class="ghost">Cancel</button>
+        <button class="btn" type="submit">Save attendance</button>
+      </div>
+    </div>
   </form>
 </div>
 
