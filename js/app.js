@@ -1852,7 +1852,7 @@ function paintDedManager() { // one row per type (built-in and custom): on/off, 
     return `<li class="flex flex-wrap items-center gap-2 py-2 border-b hair${on ? '' : ' is-off'}">
       <label class="flex items-center gap-2 text-sm shrink-0" title="Switch off to hide this type from the Deductions filter and the drop-downs"><input type="checkbox" data-deon="${esc(k)}" ${on ? 'checked' : ''} aria-label="Show ${esc(label)} in Deductions"><span class="muted">On</span></label>
       <input class="input flex-1 min-w-[11rem]" data-dename="${esc(k)}" value="${esc(label)}" maxlength="30" aria-label="Name of ${esc(label)}">
-      <div class="relative shrink-0" style="width:7.5rem"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input type="number" min="0" step="0.01" class="input pl-8" data-deamt="${esc(k)}" value="${amt || ''}" placeholder="Default" aria-label="Default amount for ${esc(label)}"></div>
+      <div class="relative shrink-0" style="width:7.5rem"><span class="absolute left-3 top-1/2 -translate-y-1/2 muted">₱</span><input type="number" min="0" step="0.01" class="input peso" data-deamt="${esc(k)}" value="${amt || ''}" placeholder="Default" aria-label="Default amount for ${esc(label)}"></div>
       ${custom ? `<button type="button" class="ghost !py-1 !px-2 text-xs shrink-0" style="color:var(--err)" data-dedrm="${esc(k)}">Remove</button>` : '<span class="muted text-xs shrink-0">Built-in</span>'}
     </li>`;
   };

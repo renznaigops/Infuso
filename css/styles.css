@@ -33,6 +33,9 @@ h1, h2 { letter-spacing: -.01em; }
 
 .input { width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: .6rem .8rem; color: var(--text); outline: none; transition: border-color .15s, box-shadow .15s; }
 .input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 30%, transparent); }
+/* Money inputs with a ₱ prefix: styles.css loads after tailwind.css, so .input's padding shorthand was
+   beating Tailwind's .pl-8 and the sign landed on top of the placeholder. Higher specificity wins. */
+.input.peso { padding-left: 2rem; }
 .lbl { display: block; font-size: .85rem; font-weight: 500; color: var(--muted); margin-bottom: .3rem; }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
