@@ -337,7 +337,7 @@
         <select id="r-year" class="input w-full sm:!w-44 hidden" aria-label="Year"></select>
         <select id="r-emp" class="input w-full sm:!w-52" aria-label="Staff"></select>
         <select id="r-pos" class="input w-full sm:!w-44" aria-label="Position"></select>
-        <select id="r-st" class="input w-full sm:!w-44" aria-label="Payroll status"><option value="">All Statuses</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
+        <select id="r-st" class="input w-full sm:!w-44" aria-label="Payroll status"><option value="">All status</option><option value="draft">Draft</option><option value="review">For review</option><option value="approved">Approved</option><option value="processed">Processed</option><option value="released">Released</option></select>
         <input id="r-q" class="input flex-1 min-w-[12rem]" placeholder="Search staff ID or name…" aria-label="Search reports"></div>
         <p class="muted text-xs mt-2">Monthly and Yearly add up every pay period in that range per staff, so the totals, the table and the export all follow the view you pick.</p></div>
       <p id="r-label" class="muted text-sm mt-4"></p>
@@ -462,7 +462,6 @@
           <h2 class="font-medium">Payroll &amp; payslip</h2>
           <p class="muted text-xs mt-1">Defaults used when generating pay and printing payslips.</p>
           <div class="grid sm:grid-cols-2 gap-4 mt-4">
-            <div><label class="lbl" for="set-rate">Fallback rate (₱/hour)</label><input id="set-rate" type="number" min="0" step="0.01" class="input"></div>
             <div><label class="lbl" for="set-sign">Payslip signatory</label><input id="set-sign" class="input" maxlength="40"></div>
             <div class="sm:col-span-2"><label class="lbl" for="set-note">Payslip footer note</label><input id="set-note" class="input" maxlength="80"></div>
           </div>

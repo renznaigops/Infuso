@@ -1091,7 +1091,7 @@ $$('[data-soon]').forEach(a => a.addEventListener('click', e => { e.preventDefau
    Automatic: Tardiness is DERIVED from attendRecord() (Attendance + Schedule), never stored,
    so it always matches the Attendance page. Manual: Cash Advance, Uniform Fee, Lost ID, Other are stored.
    Absences are NOT deducted: payroll pays only hours worked (avoids double-deducting). */
-let DEF_RATE = CFG.fallbackRate; const MAX_DAYS = 92; // fallback ₱/hr for staff without a rate (editable in Settings); max range
+let DEF_RATE = CFG.fallbackRate; const MAX_DAYS = 92; // ₱/hr used only if a staff has no rate (fixed value now, no Settings field); max range
 const DED_TYPES = { tardiness: 'Tardiness', advance: 'Cash Advance', uniform: 'Uniform Fee', lostid: 'Lost ID', other: 'Other' };
 const DED_MANUAL = ['tardiness', 'advance', 'uniform', 'lostid']; // fixed types shown in the filter and in Add deduction (Tardiness is also generated automatically); "Other" is added last and lets the admin type a new one
 const DED_BADGE = { tardiness: 'b-err', advance: 'b-night', uniform: 'b-muted', lostid: 'b-err', other: 'b-muted' };
@@ -1198,9 +1198,10 @@ function renderDeductions() {
 }
 function refreshDedTypes(pick) { // keeps the filter and the Add deduction drop-down in step with the saved types
   const opt = (k, v) => `<option value="${esc(k)}">${esc(v)}</option>`, cf = $('#d-type').value;
-  const keys = [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other']; // same list for the filter and for Add deduction; "Other" always last
-  $('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + keys.map(k => opt(k, DED_TYPES[k])).join('');
-  $('#d-type').value = keys.includes(cf) ? cf : '';
+  const keys = [...DED_MANUAL, ...DED_CUSTOM.map(c => c.k), 'other']; // same list for both drop-downs; "Other" always last
+  const fKeys = keys.filter(k => k !== 'other'); // the filter has no "Other": records typed through it are found under their own saved type
+  $('#d-type').innerHTML = '<option value="">All Deduction Types</option>' + fKeys.map(k => opt(k, DED_TYPES[k])).join('');
+  $('#d-type').value = fKeys.includes(cf) ? cf : '';
   $('#dm-type').innerHTML = keys.map(k => opt(k, DED_TYPES[k])).join('');
   if (pick) $('#dm-type').value = pick;
 }
@@ -1834,7 +1835,7 @@ function renderSettings() {
   $('#set-email').value = (sess && sess.email) || CFG.email || '';
   $('#set-addr').value = CFG.address; $('#set-contact').value = CFG.contact;
   $('#set-grace').value = GRACE; $('#set-block').checked = CFG.blockUnsched;
-  $('#set-rate').value = DEF_RATE; $('#set-note').value = CFG.psNote; $('#set-sign').value = CFG.psSignatory;
+  $('#set-note').value = CFG.psNote; $('#set-sign').value = CFG.psSignatory;
   $('#set-require').checked = CFG.requirePin;
   $('#set-notify').checked = CFG.notifyLate;
   $('#set-motion').checked = CFG.reducedMotion; $('#set-density').value = CFG.density;
@@ -1860,7 +1861,6 @@ setBump('#set-profile', 'submit', e => { // business profile -> account (name) +
 });
 setBump('#set-grace', 'change', e => { CFG.grace = Math.min(120, Math.max(0, parseInt(e.target.value, 10) || 0)); GRACE = CFG.grace; saveCfg(); e.target.value = GRACE; toast('Grace period updated.'); });
 setBump('#set-block', 'change', e => { CFG.blockUnsched = e.target.checked; saveCfg(); });
-setBump('#set-rate', 'change', e => { CFG.fallbackRate = Math.max(0, parseFloat(e.target.value) || 0); DEF_RATE = CFG.fallbackRate; saveCfg(); e.target.value = DEF_RATE; });
 setBump('#set-note', 'input', e => { CFG.psNote = e.target.value || CFG_DEF.psNote; saveCfg(); });
 setBump('#set-sign', 'input', e => { CFG.psSignatory = e.target.value || CFG_DEF.psSignatory; saveCfg(); });
 setBump('#set-require', 'change', e => { CFG.requirePin = e.target.checked; saveCfg(); if (!CFG.requirePin) unlocked = true; toast(CFG.requirePin ? 'The admin area will ask for the PIN.' : 'The admin area no longer asks for the PIN.'); });
