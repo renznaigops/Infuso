@@ -120,10 +120,8 @@ main tbody tr:nth-child(n+10) { animation-delay: .36s; }
 @media (prefers-reduced-motion: reduce) { main tbody tr { animation: none; } }
 @media print { main tbody tr { animation: none; } }
 
-/* Settings preferences: <html data-motion> / <html data-density> (set by applyCfg) */
+/* Settings preference: <html data-motion> (set by applyCfg) */
 :root[data-motion="reduce"] * { animation: none !important; transition: none !important; }
-:root[data-density="compact"] td, :root[data-density="compact"] th { padding-top: .3rem; padding-bottom: .3rem; }
-:root[data-density="compact"] main { padding: .9rem; }
 
 [id$="-modal"] > .card { border-radius: var(--r-lg); box-shadow: 0 24px 60px -16px rgba(35,22,12,.4); }
 
