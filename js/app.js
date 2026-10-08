@@ -988,7 +988,7 @@ function renderAttendance() {
     <td class="pr-3 whitespace-nowrap">${w ? schedShort(r.s) : '—'}${schedChanged(r.id, r.d) ? '<div class="text-xs" style="color:var(--warn)" title="This day’s schedule was edited. Status and hours follow the updated schedule.">Schedule updated</div>' : ''}</td>
     ${[0, 1, 2, 3].map(i => `<td class="pr-3 whitespace-nowrap">${r.t[i] != null ? fmtMin(r.t[i]) : '—'}</td>`).join('')}
     <td class="pr-3 whitespace-nowrap ${live ? 'muted' : ''}" ${live ? `title="${r.onBreak ? 'On break' : 'Still clocked in'}"` : ''}>${hasData ? fmtHM(r.hrs) : '—'}</td>
-    <td class="pr-3"><span class="badge ${b[0]}">${b[1]}</span>${r.st === 'late' && r.note ? `<div class="text-xs mt-1" style="max-width:12rem">“${esc(r.note)}”</div>` : ''}</td>
+    <td class="pr-3"><span class="badge ${b[0]}">${b[1]}</span></td>
     <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-att-edit="${r.id}" data-d="${dkey(r.d)}">${hasData ? 'Edit' : 'Record'}</button></td></tr>`;
   }).join('') : `<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">No attendance records match your filters.</td></tr>`;
   $('#a-count').textContent = recs.length ? `Showing all ${recs.length} record${recs.length === 1 ? '' : 's'}` : 'Showing 0 records';
