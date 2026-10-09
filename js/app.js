@@ -195,7 +195,7 @@ $('#login-form').addEventListener('submit', e => {
   if ($('#lu').value.trim().toLowerCase() === a.username.toLowerCase() && $('#lp').value === a.password) {
     store.set('remember', $('#rem').checked ? a.username : '');
     sess = a; $('#lp').value = ''; $('#login-err').classList.add('hidden');
-    go('home');
+    sessionLogin(); go('home');
   } else $('#login-err').classList.remove('hidden');
 });
 
@@ -212,7 +212,7 @@ $('#reg-form').addEventListener('submit', e => {
   err.classList.add('hidden');
   sess = { username: g('#ru'), password: $('#rp').value, business: g('#rb'), name: g('#rn'), email: g('#re'), pin: $('#rpin').value };
   store.set('acct', sess); e.target.reset();
-  toast('Account created.'); go('home');
+  toast('Account created.'); sessionLogin(); go('home');
 });
 
 /* ---------- Payroll PIN: opens the payroll module; locks again when you leave it ---------- */
@@ -270,7 +270,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && cfResolve) closeCon
 /* Log out asks for the 6-digit PIN first, so staff at the station can't log the admin out */
 const loModal = $('#logout-modal');
 function openLogout() {
-  if (!sess.pin) { sess = null; go('login'); return; } // older accounts with no PIN yet log out directly
+  if (!sess.pin) { sess = null; sessionLogout(); go('login'); return; } // older accounts with no PIN yet log out directly
   $('#lo-pin').value = ''; $('#lo-err').classList.add('hidden');
   loModal.classList.remove('hidden'); loModal.classList.add('flex'); $('#lo-pin').focus();
 }
@@ -284,7 +284,7 @@ $('#lo-form').addEventListener('submit', e => {
   e.preventDefault(); const v = $('#lo-pin').value, fail = m => { $('#lo-err').textContent = m; $('#lo-err').classList.remove('hidden'); };
   if (Date.now() < pinLock) return fail(`Too many attempts. Try again in ${Math.ceil((pinLock - Date.now()) / 1000)} seconds.`);
   if (v !== sess.pin) { $('#lo-pin').value = ''; if (++pinFails >= 5) { pinFails = 0; pinLock = Date.now() + 30000; return fail('Too many attempts. Try again in 30 seconds.'); } return fail('Incorrect PIN.'); }
-  pinFails = 0; closeLogout(); sess = null; go('login');
+  pinFails = 0; closeLogout(); sess = null; sessionLogout(); go('login');
 });
 $('#switch').addEventListener('click', () => go('home'));
 
@@ -408,6 +408,87 @@ function lateNotifs() { // today's late time-ins, newest first — the employee'
       return { ...x, mins, sin: s, k, dec: r ? r.dec : null };
     }).filter(Boolean).sort((a, b) => b.ts - a.ts);
 }
+/* ---------- Cross-tab sync (same browser): realtime bell + "signed in on another tab" ----------
+   No backend exists, so two windows of this browser share localStorage and that IS the realtime channel:
+   a `storage` event reaches every other window instantly, and a read-only 10s poll covers browsers that
+   skip those events on file://. sessStamp = { sid, user, ts } marks the newest sign-in; an older window
+   only warns (toast + bell card + badge) — it is never signed out behind the user's back. */
+const LOADED_AT = Date.now();
+let SID = 'w' + LOADED_AT.toString(36) + Math.random().toString(36).slice(2, 7); // this window's own id
+let warnedSid = '', foreignSess = null; // foreignSess stays in the bell until the newer session is gone
+const SYNC_KEYS = ['logs', 'lateReq', 'emps', 'sched', 'deds', 'dedTypes', 'dedCfg', 'pay', 'paysnap', 'cfg', 'bellRead', 'theme'];
+let syncRaw = {}, lastClock = Date.now(); // raw values as this window last saw them + newest announced clock event
+const sessOwner = () => (sess && (sess.name || sess.username)) || 'Owner';
+function checkSession() {
+  if (!sess) { if (foreignSess) { foreignSess = null; renderBell(); } return; }
+  const m = store.get('sessStamp', null);
+  if (!m || m.sid === SID) { if (foreignSess) { foreignSess = null; renderBell(); } return; }
+  if (m.ts <= LOADED_AT) { SID = m.sid; if (foreignSess) { foreignSess = null; renderBell(); } return; } // a marker older than this window is our own sign-in before a reload, not a new one
+  const changed = !foreignSess || foreignSess.sid !== m.sid;
+  foreignSess = { sid: m.sid, user: m.user, ts: m.ts };
+  if (!changed) return;
+  renderBell();
+  if (warnedSid !== m.sid) {
+    warnedSid = m.sid;
+    toast(`${m.user || 'Someone'} just signed this account in on another tab (${fmtTime(m.ts)}). This window stays signed in — open the bell and choose Take action if you don’t recognise it.`, 'err');
+  }
+}
+function sessionLogin() {
+  SID = 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  warnedSid = ''; foreignSess = null;
+  store.set('sessStamp', { sid: SID, user: sessOwner(), ts: Date.now() });
+  renderBell();
+}
+function sessionLogout() { // only clear the marker if this window is the one it belongs to
+  warnedSid = '';
+  if (foreignSess) { foreignSess = null; renderBell(); } // drop the security card as this window leaves
+  const m = store.get('sessStamp', null);
+  if (m && m.sid === SID) store.set('sessStamp', null);
+}
+function checkKick() { // the owner chose "Yes" in another window: end THIS session and return to Log in
+  if (!sess) return;
+  const k = store.get('sessKick', null);
+  if (!k || k.sid !== SID) return;
+  sess = null; foreignSess = null; warnedSid = '';
+  store.set('sessKick', null); // consume it, so it can never fire twice
+  go('login');
+  toast('You were signed out from another device.', 'err');
+}
+function announceClock() { // called only for a clock event another window recorded
+  if (!CFG.notifyLate) return;
+  const top = scanEvents()[0];
+  if (top && top.ts > lastClock) { lastClock = top.ts; toast(`${top.name} ${top.kind === 'in' ? 'timed in' : 'timed out'} at ${fmtTime(top.ts)}`); }
+}
+function refreshView() { // repaint the open page — never scan/verify/qr, so the camera is never restarted
+  const v = (location.hash.slice(2) || '').split('?')[0];
+  if (v === 'dashboard') renderDash(); else if (v === 'employees') renderStaff();
+  else if (v === 'schedules') renderSchedule(); else if (v === 'attendance') renderAttendance();
+  else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll();
+  else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips();
+  else if (v === 'settings') renderSettings();
+}
+function syncKey(k) {
+  syncRaw[k] = localStorage.getItem(k);
+  if (k === 'lateReq') REQ = store.get('lateReq', []); // another window accepted or rejected a late reason
+  else if (k === 'theme') { document.documentElement.dataset.theme = localStorage.getItem('theme') || 'light'; paintTheme(); }
+  else if (k === 'cfg') applyCfg();
+  else if (k === 'logs') announceClock();
+  renderBell();
+  if (k !== 'bellRead') refreshView(); // bellRead only changes when the bell is opened somewhere
+}
+addEventListener('storage', e => { // fires in every other window of this browser, never in the writer
+  if (!e.key) { SYNC_KEYS.forEach(k => { syncRaw[k] = localStorage.getItem(k); }); checkSession(); return; }
+  if (e.key === 'sessKick') { checkKick(); return; }
+  if (e.key === 'sessStamp') { checkSession(); return; }
+  if (SYNC_KEYS.includes(e.key)) syncKey(e.key);
+});
+setInterval(() => { // read-only fallback: catches changes even where storage events don't fire on file://
+  checkKick(); checkSession();
+  SYNC_KEYS.forEach(k => { const raw = localStorage.getItem(k); if (raw !== syncRaw[k]) syncKey(k); });
+}, 10000);
+SYNC_KEYS.forEach(k => { syncRaw[k] = localStorage.getItem(k); });
+const _setStore = store.set.bind(store); // remember what THIS window wrote, so its own saves are never announced back to it
+store.set = (k, v) => { _setStore(k, v); if (SYNC_KEYS.includes(k)) syncRaw[k] = JSON.stringify(v); if (k === 'logs') lastClock = Date.now(); };
 let bellRead = store.get('bellRead', 0); // timestamp of the last bell click — clock events after it count as unread
 function scanEvents() { // today's clock events, newest first. Up to 4 scans a day (in, break out, break in, out),
   const byId = new Map(); // so the 1st scan is the time in and the 4th is the time out
@@ -427,10 +508,15 @@ function renderBell() {
   const pend = reqs.filter(x => !x.dec).length; // the badge counts requests still waiting on the owner
   const items = CFG.notifyLate ? scanEvents() : [];
   const reqTs = new Set(reqs.map(x => x.ts));
-  const unread = pend + items.filter(x => x.ts > bellRead && !reqTs.has(x.ts)).length; // a late clock-in is already a request, so it is never counted twice
+  const unread = pend + items.filter(x => x.ts > bellRead && !reqTs.has(x.ts)).length + (foreignSess ? 1 : 0); // pending requests + newer clock events + the signed-in-elsewhere notice (a late clock-in is never counted twice)
   dot.textContent = unread ? (unread > 9 ? '9+' : String(unread)) : '';
   dot.classList.toggle('hidden', !unread);
   const secs = [];
+  if (foreignSess) secs.push(`<div><p class="text-sm font-medium px-1">Account security</p><div class="mt-2"><div class="card p-3" style="border-color:var(--warn)">`
+    + `<div class="text-sm font-medium">Alert: Signed in on another tab</div>`
+    + `<div class="muted text-xs mt-1">${esc(foreignSess.user)} signed in at ${fmtTime(foreignSess.ts)} — this window is still signed in too.</div>`
+    + `<div class="mt-2 flex flex-wrap items-center justify-between gap-2"><p class="text-sm">Wasn't you? Secure now:</p>`
+    + `<button class="btn text-xs !px-3 !py-1" data-takesess="1" aria-label="Take action on the other session">Take action</button></div></div></div></div>`);
   if (reqs.length) secs.push(`<div><p class="text-sm font-medium px-1">Late arrivals today (${reqs.length})</p><div class="space-y-2 mt-2">`
     + reqs.map(x => `<div class="card p-3"><div class="text-sm font-medium">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div>`
       + `<div class="muted text-xs mt-0.5">${fmtTime(x.ts)} · Scheduled ${fmtMin(x.sin)} · Late by ${x.mins} min</div>`
@@ -508,6 +594,20 @@ $('#bell-panel').addEventListener('click', async e => { // Accept / Reject a lat
   REQ.push({ k, id: x.id, date: dkey(new Date(x.ts)), dec, ts: Date.now() }); saveReq();
   toast(dec === 'ok' ? `${x.name}: reason accepted — the late deduction was removed.` : `${x.name}: rejected — the late deduction stays.`);
   renderBell();
+});
+$('#bell-panel').addEventListener('click', async e => { // "Take action": message box, then end the other window's session
+  const b = e.target.closest('[data-takesess]'); if (!b) return;
+  const other = foreignSess; if (!other) return;
+  const yes = await confirmCard({
+    title: 'Do you want to log it out from the other device?',
+    msg: `${other.user} signed in at ${fmtTime(other.ts)}. This window stays signed in.`,
+    ok: 'Yes', cancel: 'No', tone: 'warn',
+  });
+  if (!yes) return;
+  store.set('sessKick', { sid: other.sid, ts: Date.now() }); // that window signs itself out when it sees this
+  store.set('sessStamp', null); // its sign-in marker is gone
+  foreignSess = null; warnedSid = ''; renderBell();
+  toast(`${other.user} was signed out from the other device.`);
 });
 document.addEventListener('click', e => {
   const panel = $('#bell-panel');
