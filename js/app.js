@@ -233,7 +233,7 @@ $('#pin-form').addEventListener('submit', e => {
     sess.pin = v; store.set('acct', sess);
   } else {
     if (Date.now() < pinLock) return fail(`Too many attempts. Try again in ${Math.ceil((pinLock - Date.now()) / 1000)} seconds.`);
-    if (v !== sess.pin) { $('#pin-in').value = ''; if (++pinFails >= 5) { pinFails = 0; pinLock = Date.now() + 30000; return fail('Too many attempts. Try again in 30 seconds.'); } return fail('Incorrect PIN.'); }
+    if (v !== sess.pin) { pushSec('badpin'); $('#pin-in').value = ''; if (++pinFails >= 5) { pinFails = 0; pinLock = Date.now() + 30000; return fail('Too many attempts. Try again in 30 seconds.'); } return fail('Incorrect PIN.'); }
   }
   pinFails = 0; unlocked = true; go(pinTarget);
 });
@@ -419,6 +419,9 @@ let warnedSid = '', foreignSess = null; // foreignSess stays in the bell until t
 const SYNC_KEYS = ['logs', 'lateReq', 'emps', 'sched', 'deds', 'dedTypes', 'dedCfg', 'pay', 'paysnap', 'cfg', 'bellRead', 'theme'];
 let syncRaw = {}, lastClock = Date.now(); // raw values as this window last saw them + newest announced clock event
 const sessOwner = () => (sess && (sess.name || sess.username)) || 'Owner';
+let secLog = store.get('secLog', []); // newest-first payroll security events, shared by every window of this browser
+if (!Array.isArray(secLog)) secLog = [];
+let secSeen = LOADED_AT; // anything older happened before this window opened — history, never re-announced
 function checkSession() {
   if (!sess) { if (foreignSess) { foreignSess = null; renderBell(); } return; }
   const m = store.get('sessStamp', null);
@@ -454,6 +457,32 @@ function checkKick() { // the owner chose "Yes" in another window: end THIS sess
   go('login');
   toast('You were signed out from another device.', 'err');
 }
+/* ---------- Payroll security notices: opening the owner side + wrong PIN attempts ----------
+   Each event is written to localStorage, so the very same notice pops in every window of this
+   browser (toast immediately, a bell entry until it is read). No backend exists, so a different
+   browser on this device has no way to reach us — same limit as the "signed in elsewhere" card. */
+const SEC_MSG = {
+  access: 'Payroll Management has been accessed.',
+  badpin: 'An incorrect PIN was entered while attempting to access Payroll Management.',
+};
+function pushSec(kind) { // THIS window unlocked payroll or mistyped the PIN: announce it everywhere, here included
+  if (!SEC_MSG[kind]) return;
+  const ev = { kind, ts: Date.now(), user: sessOwner(), win: SID };
+  secLog = [ev, ...secLog.filter(x => x && x.ts !== ev.ts)].slice(0, 8);
+  store.set('secLog', secLog); syncRaw['secLog'] = JSON.stringify(secLog); // remember our own write so it never bounces back
+  secSeen = Math.max(secSeen, ev.ts);
+  renderBell(); toast(SEC_MSG[kind], kind === 'badpin' ? 'err' : 'ok');
+}
+function checkSec() { // another window recorded one: show the same toast here and refresh the bell
+  const raw = localStorage.getItem('secLog');
+  if (raw === syncRaw['secLog']) return;
+  syncRaw['secLog'] = raw;
+  let list = []; try { list = raw ? JSON.parse(raw) : []; } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  const fresh = list.filter(x => x && x.win !== SID && SEC_MSG[x.kind] && x.ts > secSeen);
+  secLog = list; renderBell();
+  fresh.sort((a, b) => a.ts - b.ts).forEach(x => { secSeen = Math.max(secSeen, x.ts); toast(SEC_MSG[x.kind], x.kind === 'badpin' ? 'err' : 'ok'); });
+}
 function announceClock() { // called only for a clock event another window recorded
   if (!CFG.notifyLate) return;
   const top = scanEvents()[0];
@@ -480,13 +509,15 @@ addEventListener('storage', e => { // fires in every other window of this browse
   if (!e.key) { SYNC_KEYS.forEach(k => { syncRaw[k] = localStorage.getItem(k); }); checkSession(); return; }
   if (e.key === 'sessKick') { checkKick(); return; }
   if (e.key === 'sessStamp') { checkSession(); return; }
+  if (e.key === 'secLog') { checkSec(); return; }
   if (SYNC_KEYS.includes(e.key)) syncKey(e.key);
 });
 setInterval(() => { // read-only fallback: catches changes even where storage events don't fire on file://
-  checkKick(); checkSession();
+  checkKick(); checkSession(); checkSec();
   SYNC_KEYS.forEach(k => { const raw = localStorage.getItem(k); if (raw !== syncRaw[k]) syncKey(k); });
 }, 10000);
 SYNC_KEYS.forEach(k => { syncRaw[k] = localStorage.getItem(k); });
+syncRaw['secLog'] = localStorage.getItem('secLog'); // our own copy of the payroll security log
 const _setStore = store.set.bind(store); // remember what THIS window wrote, so its own saves are never announced back to it
 store.set = (k, v) => { _setStore(k, v); if (SYNC_KEYS.includes(k)) syncRaw[k] = JSON.stringify(v); if (k === 'logs') lastClock = Date.now(); };
 let bellRead = store.get('bellRead', 0); // timestamp of the last bell click — clock events after it count as unread
@@ -508,7 +539,7 @@ function renderBell() {
   const pend = reqs.filter(x => !x.dec).length; // the badge counts requests still waiting on the owner
   const items = CFG.notifyLate ? scanEvents() : [];
   const reqTs = new Set(reqs.map(x => x.ts));
-  const unread = pend + items.filter(x => x.ts > bellRead && !reqTs.has(x.ts)).length + (foreignSess ? 1 : 0); // pending requests + newer clock events + the signed-in-elsewhere notice (a late clock-in is never counted twice)
+  const unread = pend + items.filter(x => x.ts > bellRead && !reqTs.has(x.ts)).length + (foreignSess ? 1 : 0) + secLog.filter(x => x && x.ts > bellRead).length; // pending requests + newer clock events + the signed-in-elsewhere notice + payroll security events since the bell was last opened
   dot.textContent = unread ? (unread > 9 ? '9+' : String(unread)) : '';
   dot.classList.toggle('hidden', !unread);
   const secs = [];
@@ -517,6 +548,16 @@ function renderBell() {
     + `<div class="muted text-xs mt-1">${esc(foreignSess.user)} signed in at ${fmtTime(foreignSess.ts)} — this window is still signed in too.</div>`
     + `<div class="mt-2 flex flex-wrap items-center justify-between gap-2"><p class="text-sm">Wasn't you? Secure now:</p>`
     + `<button class="btn text-xs !px-3 !py-1" data-takesess="1" aria-label="Take action on the other session">Take action</button></div></div></div></div>`);
+  if (secLog.filter(x => x && x.ts).length) secs.push(`<div><p class="text-sm font-medium px-1">Payroll security</p><div class="space-y-2 mt-2">`
+    + secLog.filter(x => x && x.ts).map(x => {
+      const bad = x.kind === 'badpin', isNew = x.ts > bellRead; // bad PIN = red card, clean unlock = green
+      return `<div class="card p-3" style="border-color:var(--${bad ? 'err' : 'ok'})">`
+        + `<div class="flex items-center gap-2"><span class="badge ${bad ? 'b-err' : 'b-ok'}">${bad ? 'Wrong PIN' : 'Accessed'}</span>`
+        + `<span class="muted text-xs">${fmtTime(x.ts)}</span>${isNew ? '<span class="badge b-warn">New</span>' : ''}</div>`
+        + `<div class="text-sm mt-1">${esc(SEC_MSG[x.kind] || SEC_MSG.access)}</div>`
+        + `<div class="muted text-xs mt-0.5">${esc(x.user || 'Owner')} · ${dkey(new Date(x.ts))}</div></div>`;
+    }).join('')
+    + `</div></div>`);
   if (reqs.length) secs.push(`<div><p class="text-sm font-medium px-1">Late arrivals today (${reqs.length})</p><div class="space-y-2 mt-2">`
     + reqs.map(x => `<div class="card p-3"><div class="text-sm font-medium">${esc(x.name)} <span class="muted font-normal">· ${x.id}</span></div>`
       + `<div class="muted text-xs mt-0.5">${fmtTime(x.ts)} · Scheduled ${fmtMin(x.sin)} · Late by ${x.mins} min</div>`
@@ -2153,6 +2194,7 @@ setBump('#set-reset', 'click', resetDemo);
 setBump('#set-remember-clear', 'click', () => { store.set('remember', ''); $('#lu').value = ''; $('#set-remember').checked = false; toast('Saved login cleared.'); });
 /* ---------- Router ---------- */
 const SHELL = ['dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips', 'settings'];
+let inShell = false; // one "Payroll Management has been accessed." per stay on the owner side (route() also runs on every tab change)
 function route() {
   let v = location.hash.slice(2) || (sess ? 'home' : 'login');
   if (!['home', 'login', 'register', 'scan', 'verify', 'dashboard', 'employees', 'schedules', 'attendance', 'deductions', 'payroll', 'reports', 'payslips', 'settings', 'qr'].includes(v)) v = sess ? 'home' : 'login';
@@ -2163,6 +2205,8 @@ function route() {
   if (CFG.requirePin && SHELL.includes(v) && !unlocked) { pinTarget = v; v = 'pin'; }
   $$('.view').forEach(x => x.classList.remove('on'));
   const shell = SHELL.includes(v); // both pages share the sidebar layout
+  if (!shell) inShell = false; // left the owner side — the next entry announces itself again
+  else if (!inShell && sess) { inShell = true; pushSec('access'); } // stepped into the owner side (the PIN was just cleared)
   $('#v-' + (shell ? 'dashboard' : v)).classList.add('on');
   stopCam();
   if (v === 'scan') startScan();
