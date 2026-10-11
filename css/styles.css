@@ -36,8 +36,29 @@ h1, h2 { letter-spacing: -.01em; }
 /* Money inputs with a ₱ prefix: styles.css loads after tailwind.css, so .input's padding shorthand was
    beating Tailwind's .pl-8 and the sign landed on top of the placeholder. Higher specificity wins. */
 .input.peso { padding-left: 2rem; }
+/* Hide the browser's own password reveal / clear buttons (Edge/IE) — the custom .eye-btn is the only toggle.
+   Scoped narrowly: never touch the textfield decoration container, or the caret / text selection / arrow keys break. */
+input::-ms-reveal, input::-ms-clear { display: none; width: 0; height: 0; }
+input[type="password"]::-webkit-credentials-auto-fill-button { visibility: hidden; pointer-events: none; position: absolute; right: 0; }
+/* Keep the caret and selection visible inside every field, including password inputs with the eye toggle */
+.input { caret-color: auto; }
+.input::selection { background: color-mix(in srgb, var(--gold) 35%, transparent); }
 .lbl { display: block; font-size: .85rem; font-weight: 500; color: var(--muted); margin-bottom: .3rem; }
 a:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Uniform password eye toggle: one 1.1rem outline icon in muted, vertically centered in the field.
+   Tight to the right edge and click-only on the button itself, so typing / caret / arrow keys are unaffected. */
+.eye-btn { position: absolute; right: .5rem; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 6px; color: var(--muted); z-index: 1; }
+.eye-btn:hover { color: var(--text); background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.eye-btn svg { width: 1.1rem; height: 1.1rem; display: block; pointer-events: none; }
+/* PIN-dot placeholder inside the brown PIN card uses its own tone so it stays visible */
+.pin-card .eye-btn { color: #d8c9bb; }
+.pin-card .eye-btn:hover { color: #fff; background: rgba(255,255,255,.12); }
+
+/* Uniform dropdown arrow: one aligned chevron on every native select */
+select.input { appearance: none; -webkit-appearance: none; padding-right: 2.25rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236c625a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right .7rem center; background-size: 1rem 1rem; }
+:root[data-theme="dark"] select.input { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b3a699' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+select.input:disabled { opacity: .55; }
 
 /* Confirmation card (destructive / important actions) */
 #confirm-modal { z-index: 60; } /* sits above the z-50 modals it can be opened from (e.g. payroll details) */
@@ -57,8 +78,37 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-
 .b-muted { color: var(--muted); background: color-mix(in srgb, var(--muted) 13%, transparent); }
 .b-night { color: var(--night); background: color-mix(in srgb, var(--night) 14%, transparent); }
 
-.choice { transition: border-color .15s; }
-.choice:hover { border-color: var(--brand); }
+.choice { transition: border-color .15s, transform .15s, box-shadow .15s; }
+.choice:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: 0 10px 28px rgba(74,47,33,.12); }
+
+/* Home / module picker — full-width café panel + icon cards, logout pinned top-right */
+#v-home header { position: sticky; top: 0; z-index: 5; padding-top: max(1.4rem, env(safe-area-inset-top, 0px) + 1rem); padding-bottom: .9rem; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); }
+#home-out { margin-left: auto; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.home-art { background: var(--side); color: #f6efe6; border: 1px solid transparent; border-radius: var(--r-lg); padding: 2rem clamp(1.25rem, 3vw, 3rem); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.home-art::after { content: ""; position: absolute; inset: auto -4rem -5rem auto; width: 16rem; height: 16rem; border-radius: 99px; border: 2px solid rgba(255,255,255,.07); pointer-events: none; }
+/* Keep the old .muted off the brown card children — force bright readable text */
+.home-art .home-sub { color: #e6d9cb; }
+.home-stack { display: flex; flex-direction: column; gap: 2rem; }
+.home-top { text-align: center; max-width: 36rem; margin: 0 auto; }
+.home-below { max-width: 56rem; margin: 0 auto; width: 100%; text-align: center; border-top: 1px solid rgba(255,255,255,.14); padding-top: 2rem; }
+.home-below h1 { color: #fff; }
+.home-hi { color: #efe0d1; font-size: .95rem; max-width: 32rem; margin-left: auto; margin-right: auto; }
+.home-footnote { color: #c9b8a8; font-size: .75rem; text-align: center; }
+.home-eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+/* Choice cards sit ON the brown card — mocha surface from system tokens so text stays visible */
+.home-choice { background: var(--beige); border-color: var(--line); color: var(--text); text-align: left; }
+.home-choice .home-choice-desc { color: var(--muted); }
+.home-choice .home-tag { color: var(--text); }
+.home-art-img { width: 100%; max-width: 22rem; margin: 1.25rem auto; object-fit: contain; }
+.home-pill { font-size: .75rem; font-weight: 600; padding: .3rem .7rem; border-radius: 99px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.07); color: #f1e8df; }
+.home-choice { min-height: 15rem; }
+.choice-icon { width: 3.25rem; height: 3.25rem; border-radius: 1rem; display: grid; place-items: center; color: var(--brand-ink); background: var(--brand); border: 1px solid var(--brand); }
+.choice-icon svg { width: 1.6rem; height: 1.6rem; }
+.home-choice-foot { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: 1.5rem; }
+.home-tag { font-size: .8rem; font-weight: 600; background: none; border: 0; padding: 0; }
+.home-arrow { font-size: 1.15rem; line-height: 1; color: var(--muted); transition: transform .15s, color .15s; }
+.home-choice:hover .home-arrow { transform: translateX(4px); color: var(--brand); }
+@media (max-width: 1023px) { .home-art-img { max-width: 16rem; margin: 1rem auto; } }
 
 /* Sidebar: dark espresso so the content area stays calm */
 #sidebar { background: var(--side); border-color: transparent; color: #e8ded4; transition: transform .2s ease, margin .2s ease; }
@@ -89,6 +139,45 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-
 video { transform: scaleX(-1); }
 .step { width: 1.75rem; height: 1.75rem; border-radius: 99px; border: 1px solid var(--line); display: grid; place-items: center; font-size: .8rem; color: var(--muted); }
 .step.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+
+/* QR scanning module: keep the top navbar pinned while the page scrolls */
+#v-scan header { position: sticky; top: 0; z-index: 20; background: var(--surface); padding-top: env(safe-area-inset-top, 0px); }
+
+/* QR scanning: same espresso + coffee art language as login — design only, layout untouched */
+#v-scan { overflow: clip; background:
+  radial-gradient(38rem 22rem at 85% -5%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 70%),
+  radial-gradient(30rem 20rem at -10% 100%, color-mix(in srgb, var(--side) 10%, transparent), transparent 65%),
+  var(--bg); }
+#v-scan > div { position: relative; }
+#v-scan > div::before { content: ""; position: absolute; right: -6rem; bottom: -4rem; width: min(26rem, 60vw); height: min(26rem, 60vw); background: url(../img/login-cafe.svg) no-repeat center / contain; opacity: .10; pointer-events: none; }
+#v-scan main { position: relative; z-index: 1; }
+#v-scan main .card.overflow-hidden { border-color: color-mix(in srgb, var(--gold) 38%, var(--line)); box-shadow: 0 18px 44px -20px rgba(74,47,33,.35); }
+#v-scan aside.card { background: var(--side); border-color: transparent; color: #f1e8df; }
+#v-scan aside.card h2 { color: #fff; }
+#v-scan aside.card .muted { color: #bdaea1; }
+:root[data-theme="dark"] #v-scan > div::before { opacity: .16; }
+
+/* Payroll PIN: same espresso + coffee art language as login/scan — form lives in a brown card */
+#v-pin > div { position: relative; overflow: clip; background:
+  radial-gradient(38rem 22rem at 85% -5%, color-mix(in srgb, var(--gold) 14%, transparent), transparent 70%),
+  radial-gradient(30rem 20rem at -10% 100%, color-mix(in srgb, var(--side) 10%, transparent), transparent 65%),
+  var(--bg); }
+#v-pin > div::before { content: ""; position: absolute; right: -6rem; bottom: -4rem; width: min(26rem, 60vw); height: min(26rem, 60vw); background: url(../img/login-cafe.svg) no-repeat center / contain; opacity: .10; pointer-events: none; }
+:root[data-theme="dark"] #v-pin > div::before { opacity: .16; }
+:root[data-theme="dark"] .pin-card { background: #241a15; border-color: var(--line); }
+.pin-card { position: relative; z-index: 1; background: var(--side); border-color: transparent; color: #f1e8df; box-shadow: 0 18px 44px -20px rgba(74,47,33,.35); }
+.pin-card #pin-title { color: #fff; }
+.pin-card #pin-sub, .pin-card .muted { color: #c9b8a8; }
+.pin-card .lbl { color: #d8c9bb; }
+.pin-card a { color: var(--gold); }
+.pin-card .input { background: #fffdf9; border-color: rgba(255,255,255,.22); color: #241d18; }
+.pin-card .input::placeholder { color: #8a7a6e; }
+.pin-card .input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 35%, transparent); }
+.pin-card #pin-err { color: #f5b5b1; }
+.pin-card #pin-btn { background: #8a6a4b; border-color: #8a6a4b; color: #fff8f0; }
+.pin-card #pin-btn:hover { background: #9a7a5b; border-color: #9a7a5b; }
+:root[data-theme="dark"] .pin-card #pin-btn { background: #6f4e37; border-color: #6f4e37; }
+:root[data-theme="dark"] .pin-card #pin-btn:hover { background: #7d5940; border-color: #7d5940; }
 
 .theme-btn { position: fixed; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); z-index: 45; width: 2.5rem; height: 2.5rem; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 99px; font-size: 1.05rem; transition: background .15s; }
 .theme-btn:hover { background: var(--bg); }

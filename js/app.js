@@ -152,10 +152,14 @@ $('#theme').addEventListener('click', () => setTheme(document.documentElement.da
 paintTheme();
 
 /* ---------- Auth (client-side demo only) ---------- */
+const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'; // uniform eye icon for every password field
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-6.5 0-10-8-10-8a18.5 18.5 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="m1 1 22 22"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/></svg>'; // same stroke/size, slash added when visible
 $$('[data-eye]').forEach(b => b.addEventListener('click', () => {
   const i = $('#' + b.dataset.eye), show = i.type === 'password';
   i.type = show ? 'text' : 'password';
-  b.textContent = show ? 'Hide' : 'Show';
+  b.innerHTML = show ? EYE_OFF : EYE_OPEN;
+  b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  b.setAttribute('title', show ? 'Hide password' : 'Show password');
 }));
 $('#lu').value = store.get('remember', '');
 /* Forgot password (demo-safe): verify username + 6-digit payroll PIN, then set a new password. No email/backend. */
@@ -764,7 +768,7 @@ function renderStaff() {
     <td class="whitespace-nowrap">${e.photo ? `<img class="avatar mr-2 align-middle inline-block" src="${e.photo}" alt="">` : `<span class="inline-grid place-items-center w-7 h-7 rounded-full text-xs mr-2 align-middle" style="background:var(--bg)">${initials(e.name)}</span>`}${id}</td>
     <td>${esc(e.name)}</td><td>${esc(e.pos)}</td><td class="whitespace-nowrap">${e.rate > 0 ? num(e.rate) : '—'}</td><td class="whitespace-nowrap">${esc(e.contact || '—')}</td><td class="whitespace-nowrap">${fmtDate(e.hired)}</td>
     <td><span class="badge ${e.draft ? 'b-warn' : e.active ? 'b-ok' : 'b-err'}">${e.draft ? 'Draft' : e.active ? 'Active' : 'Inactive'}</span></td>
-    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-card="${id}" ${cardOk(id) ? '' : 'disabled title="Activate the staff to issue an ID card"'}>ID card</button> <button class="ghost !py-1 !px-2 text-xs" data-edit="${id}">Edit</button> <button class="ghost !py-1 !px-2 text-xs" style="color:var(--err)" data-del="${id}">Delete</button></td></tr>`).join('')
+    <td class="whitespace-nowrap"><button class="ghost !py-1 !px-2 text-xs" data-card="${id}" ${cardOk(id) ? '' : 'disabled title="Activate the staff to issue an ID card"'}>ID card</button> <button class="ghost !py-1 !px-2 text-xs" data-edit="${id}">Edit</button></td></tr>`).join('')
     : '<tr class="border-t hair"><td colspan="10" class="py-8 text-center muted">No staff match your filters.</td></tr>';
   $('#emp-count').textContent = `Showing ${rows.length} of ${all.length} staff`;
   $('#e-all').checked = rows.length > 0 && rows.every(([id]) => eSel.has(id));
@@ -875,18 +879,11 @@ function purgeStaff(id) {
   Object.keys(PAY).forEach(k => { if (k.endsWith('|' + id)) { delete PAY[k]; delete SNAP[k]; } });
   savePay();
 }
-$('#emp-rows').addEventListener('click', async e => {
+$('#emp-rows').addEventListener('click', e => {
   const k = e.target.closest('[data-csel]'); if (k) { k.checked ? eSel.add(k.dataset.csel) : eSel.delete(k.dataset.csel); return; }
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.card) { if (!b.disabled) openCard(b.dataset.card); return; }
   if (b.dataset.edit) EMP[b.dataset.edit].draft ? openEmp(b.dataset.edit) : openEdit(b.dataset.edit); // drafts resume setup; existing staff get the edit form
-  if (b.dataset.del) {
-    const id = b.dataset.del, e = EMP[id];
-    if (!e) return;
-    const ok = await confirmCard({ title: 'Delete staff?', msg: `Delete ${e.name} (${id})? Their schedules, attendance records, deductions and payroll records are removed too. This can’t be undone.`, ok: 'Delete', tone: 'danger' });
-    if (ok) { delete EMP[id]; eSel.delete(id); saveEmps(); purgeStaff(id); renderStaff(); toast('Staff deleted — schedules, attendance, deductions and payroll records were removed too.'); }
-    return;
-  }
 });
 /* ---------- Edit existing staff (ID, hire date and face registration are read-only) ---------- */
 const eModal = $('#edit-modal');
@@ -2228,6 +2225,17 @@ function route() {
     if (v === 'dashboard') renderDash(); else if (v === 'employees') renderStaff(); else if (v === 'schedules') renderSchedule(); else if (v === 'deductions') renderDeductions(); else if (v === 'payroll') renderPayroll(); else if (v === 'reports') renderReports(); else if (v === 'payslips') renderPayslips(); else if (v === 'settings') renderSettings(); else renderAttendance();
     collapsed = !isDesk(); applySide();
   }
+  const topNow = () => {
+    try { window.scrollTo(0, 0); } catch (e) {}
+    try { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch (e) {}
+    $$('#v-dashboard main').forEach(m => { m.scrollTop = 0; }); // shell pages scroll inside their <main>, not the window
+  };
+  topNow(); // every view starts at the top — no leftover scroll from the last page
+  try {
+    // the browser can restore the old scroll position after hashchange — re-pin on the next frame too
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(topNow);
+    else setTimeout(topNow, 0);
+  } catch (e) {}
 }
 addEventListener('hashchange', route);
 collapsed = !isDesk(); applySide();
