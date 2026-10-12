@@ -25,34 +25,34 @@
     <div class="logo-lockup text-xl font-semibold"><img src="img/logo-white.png" alt="" class="logo-w"><img src="img/logo-brown.png" alt="" class="logo-b">InfusoPay</div>
     <button id="home-out" class="ghost text-sm">Log out</button>
   </header>
-  <div class="w-full max-w-7xl mx-auto px-6 pb-14 pt-8 sm:pt-10 flex-1">
-    <div class="home-art">
+  <div class="w-full max-w-7xl mx-auto px-6 py-6 flex-1 flex items-center justify-center">
+    <div class="home-art home-art-center">
       <div class="home-stack">
-        <div class="home-top">
-          <p class="home-eyebrow">InfusoPay Café · Bulacan, PH</p>
-          <img src="img/login-cafe.svg" alt="Coffee cup illustration" class="home-art-img">
-          <h2 class="text-xl font-semibold leading-tight mt-2">Brewed for busy café days.</h2>
-          <p class="home-sub text-sm mt-2">Payroll, schedules and attendance in one calm place — no clutter, just work done.</p>
-        </div>
         <div class="home-below">
           <h1 class="text-3xl sm:text-4xl xl:text-5xl font-semibold tracking-tight">Where would you like to go?</h1>
           <p id="home-hi" class="home-hi mt-3"></p>
           <div class="grid sm:grid-cols-2 gap-4 xl:gap-6 mt-8">
-            <a href="#/dashboard" class="card choice home-choice p-6 sm:p-7 flex flex-col" aria-label="Go to payroll management">
+            <a href="#/dashboard" class="card choice home-choice p-5 sm:p-6" aria-label="Go to payroll management">
               <span class="choice-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/><circle cx="12" cy="14.5" r="2.2"/><path d="M6 6V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg>
               </span>
-              <h2 class="font-semibold text-lg mt-5">Payroll management</h2>
-              <p class="home-choice-desc text-sm mt-2 flex-1">Staff, schedules, attendance records, payroll, reports and payslips.</p>
-              <p class="home-choice-foot"><span class="home-tag">For admin only</span><span class="home-arrow" aria-hidden="true">→</span></p>
-            </a>
-            <a href="#/scan" class="card choice home-choice p-6 sm:p-7 flex flex-col" aria-label="Go to attendance monitoring">
-              <span class="choice-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/><path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"/><path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/><path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="3.2"/><path d="M12 10.8V12l.9.9"/></svg>
+              <span class="home-choice-div" aria-hidden="true"></span>
+              <span class="home-choice-txt">
+                <span class="home-choice-title">Payroll Management</span>
+                <span class="home-tag">For admin only</span>
               </span>
-              <h2 class="font-semibold text-lg mt-5">Attendance monitoring</h2>
-              <p class="home-choice-desc text-sm mt-2 flex-1">Scan your QR code to record your time in or out.</p>
-              <p class="home-choice-foot"><span class="home-tag">For staff</span><span class="home-arrow" aria-hidden="true">→</span></p>
+              <span class="home-arrow" aria-hidden="true">→</span>
+            </a>
+            <a href="#/scan" class="card choice home-choice p-5 sm:p-6" aria-label="Go to attendance monitoring">
+              <span class="choice-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8"/><path d="M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8"/><path d="M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16"/><path d="M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><rect x="9" y="9" width="2.4" height="2.4" rx=".6"/><rect x="12.6" y="9" width="2.4" height="2.4" rx=".6"/><rect x="9" y="12.6" width="2.4" height="2.4" rx=".6"/><rect x="12.6" y="12.6" width="2.4" height="2.4" rx=".6"/></svg>
+              </span>
+              <span class="home-choice-div" aria-hidden="true"></span>
+              <span class="home-choice-txt">
+                <span class="home-choice-title">Attendance Monitoring</span>
+                <span class="home-tag">For staff</span>
+              </span>
+              <span class="home-arrow" aria-hidden="true">→</span>
             </a>
           </div>
           <p class="home-footnote mt-8">Demonstration prototype, not a working system.</p>
